@@ -28,7 +28,8 @@ class _AddSubSheetState extends State<AddSubSheet> {
   String _hexColor = 'FFE50914';
   bool _saving = false;
 
-  Map<String, dynamic>? _userGroup;
+  List<Map<String, dynamic>> _userGroups = [];
+  String? _selectedGroupId;
   bool _loadingGroup = true;
   bool _shareWithFamily = false;
 
@@ -47,10 +48,13 @@ class _AddSubSheetState extends State<AddSubSheet> {
 
   Future<void> _checkUserGroup() async {
     try {
-      final group = await MongoDbService().getUserGroup(widget.userEmail);
+      final groups = await MongoDbService().getUserGroups(widget.userEmail);
       if (mounted) {
         setState(() {
-          _userGroup = group;
+          _userGroups = groups;
+          if (groups.isNotEmpty) {
+            _selectedGroupId = groups[0]['id'];
+          }
           _loadingGroup = false;
         });
       }
@@ -114,7 +118,7 @@ class _AddSubSheetState extends State<AddSubSheet> {
         'renewalDate': _dateCtrl.text.trim(),
         'category': _category,
         'color': _hexColor,
-        if (_shareWithFamily && _userGroup != null) 'groupId': _userGroup!['id'],
+        if (_shareWithFamily && _selectedGroupId != null) 'groupId': _selectedGroupId,
       },
     );
 
@@ -281,7 +285,7 @@ class _AddSubSheetState extends State<AddSubSheet> {
                   );
                 }).toList(),
               ),
-              if (!_loadingGroup && _userGroup != null) ...[
+              if (!_loadingGroup && _userGroups.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -290,31 +294,74 @@ class _AddSubSheetState extends State<AddSubSheet> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFD4593A).withValues(alpha: 0.15)),
                   ),
-                  child: SwitchListTile(
-                    value: _shareWithFamily,
-                    onChanged: (val) {
-                      setState(() {
-                        _shareWithFamily = val;
-                      });
-                    },
-                    activeColor: const Color(0xFFD4593A),
-                    contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.people_alt_rounded, color: Color(0xFFD4593A)),
-                    title: Text(
-                      'Share with ${_userGroup!['name']}',
-                      style: const TextStyle(
-                        color: Color(0xFF1A1A2E),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SwitchListTile(
+                        value: _shareWithFamily,
+                        onChanged: (val) {
+                          setState(() {
+                            _shareWithFamily = val;
+                          });
+                        },
+                        activeColor: const Color(0xFFD4593A),
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.people_alt_rounded, color: Color(0xFFD4593A)),
+                        title: const Text(
+                          'Share with Family Group',
+                          style: TextStyle(
+                            color: Color(0xFF1A1A2E),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Allow members of the selected family to view and sync this plan.',
+                          style: TextStyle(
+                            color: Color(0xFF6B6B80),
+                            fontSize: 12.5,
+                          ),
+                        ),
                       ),
-                    ),
-                    subtitle: const Text(
-                      'All family members will see this on their dashboard and get timelines.',
-                      style: TextStyle(
-                        color: Color(0xFF6B6B80),
-                        fontSize: 12.5,
-                      ),
-                    ),
+                      if (_shareWithFamily && _userGroups.length > 1) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _selectedGroupId,
+                          items: _userGroups.map((g) {
+                            return DropdownMenuItem<String>(
+                              value: g['id'],
+                              child: Text(
+                                g['name'] ?? 'Family Group',
+                                style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 13.5, fontWeight: FontWeight.w600),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              _selectedGroupId = val;
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Select Family Group',
+                            filled: true,
+                            fillColor: Colors.white,
+                          ),
+                        ),
+                      ] else if (_shareWithFamily && _userGroups.length == 1) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 48.0),
+                          child: Text(
+                            'Sharing to: ${_userGroups[0]['name']}',
+                            style: const TextStyle(
+                              color: Color(0xFFD4593A),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],

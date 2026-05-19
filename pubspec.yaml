@@ -40,10 +40,14 @@ dependencies:
   shared_preferences: ^2.3.2
   http: ^1.2.2
   mailer: ^6.1.0
+  flutter_local_notifications: ^17.2.1
+  timezone: ^0.9.4
+  flutter_svg: ^2.0.10
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -65,6 +69,7 @@ flutter:
 
   assets:
     - .env
+    - assets/images/final_logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -96,3 +101,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/final_logo.png"
+  adaptive_icon_background: "#F8F6F1"
+  adaptive_icon_foreground: "assets/images/final_logo.png"

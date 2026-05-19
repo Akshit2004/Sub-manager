@@ -24,18 +24,19 @@ class DbGroupsService {
     return copy;
   }
 
-  /// Fetch user group (reads from local cache first, syncs in background if > 5 min old)
-  Future<Map<String, dynamic>?> getUserGroup(String email) async {
+  /// Fetch user groups (reads from local cache first, syncs in background if > 5 min old)
+  Future<List<Map<String, dynamic>>> getUserGroups(String email) async {
     final cleanEmail = email.toLowerCase().trim();
     final prefs = await SharedPreferences.getInstance();
     
-    // 1. Read cached group
-    final cacheKey = 'local_group_$cleanEmail';
+    // 1. Read cached groups
+    final cacheKey = 'local_groups_$cleanEmail';
     final cachedJson = prefs.getString(cacheKey);
-    Map<String, dynamic>? cachedGroup;
+    List<Map<String, dynamic>> cachedGroups = [];
     if (cachedJson != null && cachedJson != 'null') {
       try {
-        cachedGroup = Map<String, dynamic>.from(jsonDecode(cachedJson));
+        final decoded = List<dynamic>.from(jsonDecode(cachedJson));
+        cachedGroups = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
       } catch (_) {}
     }
     
@@ -46,50 +47,50 @@ class DbGroupsService {
     final isStale = (now - lastFetchTime) > 300000; // 5 minutes
     
     if (kIsWeb) {
-      return cachedGroup;
+      return cachedGroups;
     }
     
     if (isStale) {
       _triggerBackgroundGroupSync(cleanEmail);
     }
     
-    // Return cached group instantly if exists
-    if (cachedGroup != null) {
-      return cachedGroup;
+    // Return cached groups instantly if they exist
+    if (cachedGroups.isNotEmpty) {
+      return cachedGroups;
     }
     
-    return await _fetchAndCacheGroup(cleanEmail);
+    return await _fetchAndCacheGroups(cleanEmail);
   }
 
-  /// Sync group state with remote MongoDB
-  Future<Map<String, dynamic>?> _fetchAndCacheGroup(String email) async {
+  /// Sync groups state with remote MongoDB
+  Future<List<Map<String, dynamic>>> _fetchAndCacheGroups(String email) async {
     final cleanEmail = email.toLowerCase().trim();
     try {
       await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return null;
+      if (!_connection.isConnected || _connection.db == null) return [];
       final coll = _connection.db!.collection('groups');
-      final group = await coll.findOne(mongo.where.eq('members', cleanEmail));
+      final list = await coll.find(mongo.where.eq('members', cleanEmail)).toList();
       
       final prefs = await SharedPreferences.getInstance();
-      if (group != null) {
-        final parsed = _serializeMongoMap(Map<String, dynamic>.from(group));
-        await prefs.setString('local_group_$cleanEmail', jsonEncode(parsed));
+      if (list.isNotEmpty) {
+        final parsed = list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
+        await prefs.setString('local_groups_$cleanEmail', jsonEncode(parsed));
       } else {
-        await prefs.setString('local_group_$cleanEmail', 'null');
+        await prefs.setString('local_groups_$cleanEmail', '[]');
       }
       await prefs.setInt('last_group_fetch_$cleanEmail', DateTime.now().millisecondsSinceEpoch);
       
-      return group != null ? _serializeMongoMap(Map<String, dynamic>.from(group)) : null;
+      return list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      debugPrint('Sync group fetch failed: $e');
-      return null;
+      debugPrint('Sync groups fetch failed: $e');
+      return [];
     }
   }
 
   /// Silent background group updates
   void _triggerBackgroundGroupSync(String email) {
     Future.microtask(() async {
-      await _fetchAndCacheGroup(email);
+      await _fetchAndCacheGroups(email);
       // Trigger a silent sync notification to redraw components
       MongoDbService.notifySync(email);
     });
@@ -148,11 +149,6 @@ class DbGroupsService {
     if (kIsWeb) {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final existingGroup = await getUserGroup(cleanEmail);
-        if (existingGroup != null) {
-          return {'success': false, 'message': 'You are already in a Family Group'};
-        }
-
         final groupsJson = prefs.getString('web_groups') ?? '[]';
         final groups = List<dynamic>.from(jsonDecode(groupsJson));
         groups.add(group);
@@ -170,11 +166,6 @@ class DbGroupsService {
       }
 
       final coll = _connection.db!.collection('groups');
-      final existingGroup = await coll.findOne(mongo.where.eq('members', cleanEmail));
-      if (existingGroup != null) {
-        return {'success': false, 'message': 'You are already in a Family Group'};
-      }
-
       await coll.insertOne(group);
       
       // Invalidate group cache immediately
@@ -223,11 +214,6 @@ class DbGroupsService {
           return {'success': false, 'message': 'User already has a pending invite'};
         }
 
-        final userExistingGroup = await getUserGroup(cleanEmail);
-        if (userExistingGroup != null) {
-          return {'success': false, 'message': 'This user is already a member of another Family Group'};
-        }
-
         pending.add(cleanEmail);
         group['pendingInvites'] = pending;
         groups[foundIndex] = group;
@@ -256,11 +242,6 @@ class DbGroupsService {
 
       if (pending.contains(cleanEmail)) {
         return {'success': false, 'message': 'User already has a pending invite'};
-      }
-
-      final userExistingGroup = await coll.findOne(mongo.where.eq('members', cleanEmail));
-      if (userExistingGroup != null) {
-        return {'success': false, 'message': 'This user is already a member of another Family Group'};
       }
 
       await coll.updateOne(

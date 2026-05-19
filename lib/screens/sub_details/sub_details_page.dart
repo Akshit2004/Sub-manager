@@ -63,8 +63,13 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
   Future<void> _sendFamilyAlert(String name, String priceStr, String renewalStr) async {
     setState(() => _sendingAlert = true);
     try {
-      final group = await MongoDbService().getUserGroup(widget.userEmail);
-      if (group == null) {
+      final groups = await MongoDbService().getUserGroups(widget.userEmail);
+      final subGroupId = widget.subscription['groupId'];
+      final group = groups.firstWhere(
+        (g) => g['id'] == subGroupId,
+        orElse: () => groups.isNotEmpty ? groups.first : <String, dynamic>{},
+      );
+      if (group.isEmpty) {
         _showSnackBar('No active Family Group found.', success: false);
         setState(() => _sendingAlert = false);
         return;
@@ -517,7 +522,7 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
                   ),
                 ),
 
-                if (_controller.userGroup != null) ...[
+                if (_controller.userGroups.isNotEmpty) ...[
                   const SizedBox(height: 28),
                   const Padding(
                      padding: EdgeInsets.symmetric(horizontal: 4),
@@ -559,14 +564,14 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
                              const SizedBox(width: 10),
                              Text(
                                s['groupId'] != null
-                                   ? 'Shared with ${_controller.userGroup!['name']}'
+                                   ? 'Shared with ${_controller.userGroups.firstWhere((g) => g['id'] == s['groupId'], orElse: () => _controller.userGroups.first)['name']}'
                                    : 'Private Subscription',
                                style: const TextStyle(
                                  color: Color(0xFF1A1A2E),
                                  fontSize: 15,
                                  fontWeight: FontWeight.w700,
-                               ),
-                             ),
+                                ),
+                              ),
                            ],
                          ),
                          const SizedBox(height: 8),
@@ -615,10 +620,10 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
                              width: double.infinity,
                              child: OutlinedButton.icon(
                                onPressed: () async {
-                                 final success = await _controller.updateGroupSharing(false);
+                                 final success = await _controller.updateGroupSharing(null);
                                  if (success) {
                                    _showSnackBar('No longer sharing this subscription with family.', success: true);
-                                   widget.onDataChanged();
+                                    widget.onDataChanged();
                                  } else {
                                    _showSnackBar('Failed to update sharing settings.', success: false);
                                  }
@@ -638,12 +643,42 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
                              width: double.infinity,
                              child: ElevatedButton.icon(
                                onPressed: () async {
-                                 final success = await _controller.updateGroupSharing(true);
-                                 if (success) {
-                                   _showSnackBar('Subscription shared with family group!', success: true);
-                                   widget.onDataChanged();
-                                 } else {
-                                   _showSnackBar('Failed to share subscription.', success: false);
+                                 String? selectedGroupId = _controller.userGroups.first['id'];
+                                 if (_controller.userGroups.length > 1) {
+                                   selectedGroupId = await showDialog<String>(
+                                     context: context,
+                                     builder: (context) => AlertDialog(
+                                       backgroundColor: Colors.white,
+                                       surfaceTintColor: Colors.transparent,
+                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                       title: const Text(
+                                         'Select Family Group',
+                                         style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold),
+                                       ),
+                                       content: Column(
+                                         mainAxisSize: MainAxisSize.min,
+                                         children: _controller.userGroups.map((g) {
+                                           return ListTile(
+                                             leading: const Icon(Icons.people_rounded, color: Color(0xFFD4593A)),
+                                             title: Text(
+                                               g['name'] ?? 'Family Group',
+                                               style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w600),
+                                             ),
+                                             onTap: () => Navigator.of(context).pop(g['id']),
+                                           );
+                                         }).toList(),
+                                       ),
+                                     ),
+                                   );
+                                 }
+                                 if (selectedGroupId != null) {
+                                   final success = await _controller.updateGroupSharing(selectedGroupId);
+                                   if (success) {
+                                     _showSnackBar('Subscription shared with family group!', success: true);
+                                     widget.onDataChanged();
+                                   } else {
+                                     _showSnackBar('Failed to share subscription.', success: false);
+                                   }
                                  }
                                },
                                icon: const Icon(Icons.share_rounded, size: 16),

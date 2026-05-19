@@ -121,17 +121,6 @@ class _LandingPageState extends State<LandingPage>
   Widget _nav() {
     return Row(
       children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: _primaryContainer,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(Icons.account_balance_wallet_outlined,
-              color: Colors.white, size: 19),
-        ),
-        const SizedBox(width: 10),
         const Text(
           'SubManager',
           style: TextStyle(

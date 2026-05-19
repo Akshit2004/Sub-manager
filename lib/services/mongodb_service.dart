@@ -80,8 +80,8 @@ class MongoDbService {
 
   // ── Family Groups Service Delegation ────────────────────
 
-  Future<Map<String, dynamic>?> getUserGroup(String email) =>
-      _groups.getUserGroup(email);
+  Future<List<Map<String, dynamic>>> getUserGroups(String email) =>
+      _groups.getUserGroups(email);
 
   Future<List<Map<String, dynamic>>> getInvitesForUser(String email) =>
       _groups.getInvitesForUser(email);

@@ -4,6 +4,7 @@ import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../mongodb_service.dart';
 import 'db_connection.dart';
+import '../notification_service.dart';
 
 class DbSubscriptionsService {
   final DbConnectionService _connection;
@@ -24,28 +25,31 @@ class DbSubscriptionsService {
     return copy;
   }
 
-  /// Internal utility to find user groups without circular dependencies
-  Future<Map<String, dynamic>?> _getUserGroup(String email) async {
+  /// Internal utility to find user group IDs without circular dependencies
+  Future<List<String>> _getUserGroupIds(String email) async {
     final cleanEmail = email.toLowerCase().trim();
     if (kIsWeb) {
       final prefs = await SharedPreferences.getInstance();
       final groupsJson = prefs.getString('web_groups') ?? '[]';
       final groups = List<dynamic>.from(jsonDecode(groupsJson));
+      final groupIds = <String>[];
       for (var g in groups) {
         final group = Map<String, dynamic>.from(g);
         final members = List<String>.from(group['members'] ?? []);
         if (members.contains(cleanEmail) || group['ownerEmail'] == cleanEmail) {
-          return group;
+          if (group['id'] != null) {
+            groupIds.add(group['id'].toString());
+          }
         }
       }
-      return null;
+      return groupIds;
     }
 
     await _connection.ensureConnected();
-    if (!_connection.isConnected || _connection.db == null) return null;
+    if (!_connection.isConnected || _connection.db == null) return [];
     final coll = _connection.db!.collection('groups');
-    final group = await coll.findOne(mongo.where.eq('members', cleanEmail));
-    return group != null ? _serializeMongoMap(Map<String, dynamic>.from(group)) : null;
+    final groups = await coll.find(mongo.where.eq('members', cleanEmail)).toList();
+    return groups.map((g) => g['id']?.toString()).whereType<String>().toList();
   }
 
   /// Unified retrieval: reads from local cache first, then syncs in background if stale (> 5 min)
@@ -96,16 +100,12 @@ class DbSubscriptionsService {
       await _connection.ensureConnected();
       if (!_connection.isConnected || _connection.db == null) return [];
       
-      String? userGroupId;
-      final group = await _getUserGroup(cleanEmail);
-      if (group != null) {
-        userGroupId = group['id']?.toString();
-      }
+      final groupIds = await _getUserGroupIds(cleanEmail);
 
       final coll = _connection.db!.collection('subscriptions');
       mongo.SelectorBuilder selector;
-      if (userGroupId != null) {
-        selector = mongo.where.eq('email', cleanEmail).or(mongo.where.eq('groupId', userGroupId));
+      if (groupIds.isNotEmpty) {
+        selector = mongo.where.eq('email', cleanEmail).or(mongo.where.oneFrom('groupId', groupIds));
       } else {
         selector = mongo.where.eq('email', cleanEmail);
       }
@@ -117,6 +117,9 @@ class DbSubscriptionsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('local_subs_$cleanEmail', jsonEncode(freshList));
       await prefs.setInt('last_fetch_$cleanEmail', DateTime.now().millisecondsSinceEpoch);
+      
+      // Bulk sync local scheduled reminders in background
+      NotificationService().syncAllSubscriptionsReminders(freshList);
       
       return freshList;
     } catch (e) {
@@ -165,6 +168,9 @@ class DbSubscriptionsService {
       if (!_connection.isConnected || _connection.db == null) return false;
       final coll = _connection.db!.collection('subscriptions');
       await coll.insertOne(item);
+      
+      // Schedule reminders immediately
+      NotificationService().scheduleSubscriptionReminders(item);
       
       // Invalidate cache immediately on mutation
       final prefs = await SharedPreferences.getInstance();
@@ -332,6 +338,11 @@ class DbSubscriptionsService {
       }
       if (stringIds.isNotEmpty) {
         await coll.remove(mongo.where.eq('email', cleanEmail).and(mongo.where.oneFrom('id', stringIds)));
+      }
+      
+      // Cancel pending notifications for deleted IDs
+      for (final id in ids) {
+        NotificationService().cancelSubscriptionReminders(id);
       }
       
       // Invalidate cache immediately on mutation
