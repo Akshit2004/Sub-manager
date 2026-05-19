@@ -7,6 +7,8 @@ import 'widgets/subscription_list_header.dart';
 import 'widgets/subscription_list_item.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/add_subscription_sheet.dart';
+import '../timeline/timeline_page.dart';
+import '../analytics/analytics_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userName;
@@ -86,6 +88,129 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     );
   }
 
+  Widget _buildBody(BuildContext context) {
+    switch (_navIndex) {
+      case 0:
+        return Column(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
+            ),
+            Expanded(
+              child: _controller.loading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Color(0xFFD4593A)),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _controller.loadSubscriptions,
+                      color: const Color(0xFFD4593A),
+                      backgroundColor: const Color(0xFFFFFFFF),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 12),
+                            _fade(0.08, 0.38, child: SpendSummaryCard(controller: _controller, entrance: _entrance)),
+                            const SizedBox(height: 32),
+                            _fade(0.20, 0.50, child: SubscriptionListHeader(controller: _controller)),
+                            if (_controller.subscriptions.isEmpty)
+                              _fade(0.25, 0.60, child: EmptyState(onAddPressed: _showAddSubscriptionSheet))
+                            else
+                              ...List.generate(_controller.subscriptions.length, (i) {
+                                return _fade(
+                                  0.24 + i * 0.06,
+                                  0.54 + i * 0.06,
+                                  child: SubscriptionListItem(
+                                    subscription: _controller.subscriptions[i],
+                                    isNext: i == 0,
+                                    controller: _controller,
+                                  ),
+                                );
+                              }),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        );
+      case 1:
+        return Column(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
+            ),
+            Expanded(
+              child: TimelinePage(
+                userName: widget.userName,
+                userEmail: widget.userEmail,
+              ),
+            ),
+          ],
+        );
+      case 2:
+        return Column(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
+            ),
+            Expanded(
+              child: AnalyticsPage(
+                userName: widget.userName,
+                userEmail: widget.userEmail,
+              ),
+            ),
+          ],
+        );
+      case 3:
+      default:
+        return Column(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
+            ),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.insights_rounded,
+                      size: 48,
+                      color: const Color(0xFF6B6B80).withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Insights Coming Soon',
+                      style: TextStyle(
+                        color: Color(0xFF6B6B80),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'We are currently tailoring this module for you.',
+                      style: TextStyle(
+                        color: Color(0xFFACA8A1),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -93,64 +218,18 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       builder: (context, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF8F6F1),
-          body: Column(
-            children: [
-              SafeArea(
-                bottom: false,
-                child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
-              ),
-              Expanded(
-                child: _controller.loading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Color(0xFFD4593A)),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _controller.loadSubscriptions,
-                        color: const Color(0xFFD4593A),
-                        backgroundColor: const Color(0xFFFFFFFF),
-                        child: SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 12),
-                              _fade(0.08, 0.38, child: SpendSummaryCard(controller: _controller, entrance: _entrance)),
-                              const SizedBox(height: 32),
-                              _fade(0.20, 0.50, child: SubscriptionListHeader(controller: _controller)),
-                              if (_controller.subscriptions.isEmpty)
-                                _fade(0.25, 0.60, child: EmptyState(onAddPressed: _showAddSubscriptionSheet))
-                              else
-                                ...List.generate(_controller.subscriptions.length, (i) {
-                                  return _fade(
-                                    0.24 + i * 0.06,
-                                    0.54 + i * 0.06,
-                                    child: SubscriptionListItem(
-                                      subscription: _controller.subscriptions[i],
-                                      isNext: i == 0,
-                                      controller: _controller,
-                                    ),
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-                      ),
-              ),
-            ],
-          ),
+          body: _buildBody(context),
           bottomNavigationBar: _fade(0.40, 0.80, child: _buildBottomNav()),
           floatingActionButton: _fade(
             0.35,
             0.75,
-            child: FloatingActionButton.extended(
+            child: FloatingActionButton(
               onPressed: _showAddSubscriptionSheet,
               backgroundColor: const Color(0xFFD4593A),
               foregroundColor: Colors.white,
               elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              icon: const Icon(Icons.add_rounded, size: 22),
-              label: const Text('Add subscription', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              child: const Icon(Icons.add_rounded, size: 24),
             ),
           ),
         );

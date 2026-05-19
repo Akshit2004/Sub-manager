@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../dashboard_controller.dart';
 import '../../../utils/currency_utils.dart';
+import '../../sub_details/sub_details_page.dart';
 
 class SubscriptionListItem extends StatelessWidget {
   final Map<String, dynamic> subscription;
@@ -40,6 +41,18 @@ class SubscriptionListItem extends StatelessWidget {
       onTap: () {
         if (controller.isSelectionMode) {
           controller.toggleSelection(id);
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => SubDetailsPage(
+                userEmail: controller.userEmail,
+                subscription: s,
+                onDataChanged: () {
+                  controller.loadSubscriptions();
+                },
+              ),
+            ),
+          );
         }
       },
       onLongPress: () {

@@ -44,19 +44,24 @@ class SpendSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _CountUpText(
-                target: controller.totalSpend,
-                entrance: entrance,
-                currencySymbol: baseSymbol,
-                style: const TextStyle(
-                  color: Color(0xFF1A1A2E),
-                  fontSize: 46,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -2,
-                  height: 1,
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: _CountUpText(
+                    target: controller.totalSpend,
+                    entrance: entrance,
+                    currencySymbol: baseSymbol,
+                    style: const TextStyle(
+                      color: Color(0xFF1A1A2E),
+                      fontSize: 46,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -2,
+                      height: 1,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -118,19 +123,27 @@ class SpendSummaryCard extends StatelessWidget {
           style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 11.5),
           dropdownColor: const Color(0xFFFFFFFF),
           borderRadius: BorderRadius.circular(12),
-          alignment: Alignment.centerRight,
+          alignment: Alignment.bottomRight,
           onChanged: (val) {
             if (val != null) {
               controller.saveBaseCurrency(val);
             }
           },
-          items: CurrencyUtils.currencySymbols.keys.map((String cur) {
-            final symbol = CurrencyUtils.currencySymbols[cur] ?? '';
-            return DropdownMenuItem<String>(
-              value: cur,
-              child: Text('$symbol $cur  '),
-            );
-          }).toList(),
+          items: () {
+            final active = controller.baseCurrency;
+            final list = CurrencyUtils.currencySymbols.keys.toList();
+            if (list.contains(active)) {
+              list.remove(active);
+              list.insert(0, active);
+            }
+            return list.map((String cur) {
+              final symbol = CurrencyUtils.currencySymbols[cur] ?? '';
+              return DropdownMenuItem<String>(
+                value: cur,
+                child: Text('$symbol $cur  '),
+              );
+            }).toList();
+          }(),
         ),
       ),
     );

@@ -316,6 +316,57 @@ class MongoDbService {
     }
   }
 
+  /// Update notes of a subscription.
+  Future<bool> updateSubscriptionNotes(String email, String id, String notes) async {
+    final cleanEmail = email.toLowerCase().trim();
+
+    // ── web mode fallback ──────────────────────────────────
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions(cleanEmail);
+        for (var item in list) {
+          final itemId = (item['id'] ?? item['createdAt'] ?? '').toString();
+          if (itemId == id) {
+            item['notes'] = notes;
+            break;
+          }
+        }
+        await prefs.setString('web_subs_$cleanEmail', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Web updateSubscriptionNotes failed: $e');
+        return false;
+      }
+    }
+
+    // ── native mode ────────────────────────────────────────
+    try {
+      if (!_isConnected || _db == null) return false;
+      final coll = _db!.collection('subscriptions');
+      
+      // Try treating as ObjectId first
+      try {
+        final objId = mongo.ObjectId.fromHexString(id);
+        final res = await coll.updateOne(
+          mongo.where.eq('email', cleanEmail).and(mongo.where.eq('_id', objId)),
+          mongo.modify.set('notes', notes),
+        );
+        if (res.isSuccess) return true;
+      } catch (_) {}
+
+      // Fallback/direct matching by custom 'id' field
+      await coll.updateOne(
+        mongo.where.eq('email', cleanEmail).and(mongo.where.eq('id', id)),
+        mongo.modify.set('notes', notes),
+      );
+      return true;
+    } catch (e) {
+      debugPrint('Native updateSubscriptionNotes failed: $e');
+      return false;
+    }
+  }
+
   /// Delete a list of subscriptions by their unique IDs (supports bulk delete).
   Future<bool> deleteSubscriptions(String email, List<String> ids) async {
     final cleanEmail = email.toLowerCase().trim();
