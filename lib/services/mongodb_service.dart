@@ -282,8 +282,10 @@ class MongoDbService {
   /// Add a new subscription.
   Future<bool> addSubscription(String email, Map<String, dynamic> data) async {
     final cleanEmail = email.toLowerCase().trim();
+    final uniqueId = DateTime.now().microsecondsSinceEpoch.toString();
     final item = {
       ...data,
+      'id': uniqueId, // Unified platform-agnostic identifier
       'email': cleanEmail,
       'createdAt': DateTime.now().toIso8601String(),
     };
@@ -310,6 +312,56 @@ class MongoDbService {
       return true;
     } catch (e) {
       debugPrint('Native addSubscription failed: $e');
+      return false;
+    }
+  }
+
+  /// Delete a list of subscriptions by their unique IDs (supports bulk delete).
+  Future<bool> deleteSubscriptions(String email, List<String> ids) async {
+    final cleanEmail = email.toLowerCase().trim();
+
+    // ── web mode fallback ──────────────────────────────────
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions(cleanEmail);
+        list.removeWhere((item) => ids.contains(item['id'] ?? item['createdAt']));
+        await prefs.setString('web_subs_$cleanEmail', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Web deleteSubscriptions failed: $e');
+        return false;
+      }
+    }
+
+    // ── native mode ────────────────────────────────────────
+    try {
+      if (!_isConnected || _db == null) return false;
+      final coll = _db!.collection('subscriptions');
+      
+      final objectIds = <mongo.ObjectId>[];
+      final stringIds = <String>[];
+      
+      for (final id in ids) {
+        try {
+          // If the ID is a valid hex string for a MongoDB ObjectId
+          objectIds.add(mongo.ObjectId.fromHexString(id));
+        } catch (_) {
+          // Otherwise treat it as a standard custom string 'id'
+          stringIds.add(id);
+        }
+      }
+
+      // Delete by either native _id or custom id field
+      if (objectIds.isNotEmpty) {
+        await coll.remove(mongo.where.eq('email', cleanEmail).and(mongo.where.oneFrom('_id', objectIds)));
+      }
+      if (stringIds.isNotEmpty) {
+        await coll.remove(mongo.where.eq('email', cleanEmail).and(mongo.where.oneFrom('id', stringIds)));
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Native deleteSubscriptions failed: $e');
       return false;
     }
   }

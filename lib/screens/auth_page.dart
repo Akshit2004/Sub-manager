@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mongodb_service.dart';
-import 'dashboard_page.dart';
+import 'dashboard/dashboard_page.dart';
 
 class AuthPage extends StatefulWidget {
   final bool isLogin;
