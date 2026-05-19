@@ -9,6 +9,7 @@ import 'widgets/empty_state.dart';
 import 'widgets/add_subscription_sheet.dart';
 import '../timeline/timeline_page.dart';
 import '../analytics/analytics_page.dart';
+import '../family/family_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userName;
@@ -33,7 +34,15 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..forward();
+    );
+    
+    _entrance.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) setState(() {});
+      }
+    });
+    
+    _entrance.forward();
   }
 
   void _onStateChange() {
@@ -60,6 +69,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       );
 
   Widget _fade(double s, double e, {required Widget child}) {
+    if (_entrance.isCompleted) {
+      return child;
+    }
     final a = _stagger(s, e);
     return FadeTransition(
       opacity: a,
@@ -176,34 +188,12 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
               child: _fade(0.0, 0.3, child: DashboardAppBar(controller: _controller)),
             ),
             Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.insights_rounded,
-                      size: 48,
-                      color: const Color(0xFF6B6B80).withValues(alpha: 0.5),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Insights Coming Soon',
-                      style: TextStyle(
-                        color: Color(0xFF6B6B80),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'We are currently tailoring this module for you.',
-                      style: TextStyle(
-                        color: Color(0xFFACA8A1),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
+              child: FamilyPage(
+                userName: widget.userName,
+                userEmail: widget.userEmail,
+                onGroupChanged: () {
+                  _controller.loadSubscriptions();
+                },
               ),
             ),
           ],
@@ -242,7 +232,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       (Icons.home_rounded, Icons.home_outlined, 'Home'),
       (Icons.calendar_today_rounded, Icons.calendar_today_outlined, 'Timeline'),
       (Icons.bar_chart_rounded, Icons.bar_chart_outlined, 'Analytics'),
-      (Icons.insights_rounded, Icons.insights_outlined, 'Insights'),
+      (Icons.people_alt_rounded, Icons.people_outline, 'Family'),
     ];
 
     return Container(
@@ -259,7 +249,10 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
             children: List.generate(items.length, (i) {
               final active = _navIndex == i;
               return GestureDetector(
-                onTap: () => setState(() => _navIndex = i),
+                onTap: () {
+                  setState(() => _navIndex = i);
+                  _controller.loadSubscriptions();
+                },
                 behavior: HitTestBehavior.opaque,
                 child: SizedBox(
                   width: 72,

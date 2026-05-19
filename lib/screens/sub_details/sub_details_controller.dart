@@ -7,6 +7,8 @@ class SubDetailsController extends ChangeNotifier {
   
   bool savingNotes = false;
   bool deleting = false;
+  bool loadingGroup = true;
+  Map<String, dynamic>? userGroup;
   late final TextEditingController notesController;
 
   SubDetailsController({
@@ -14,6 +16,30 @@ class SubDetailsController extends ChangeNotifier {
     required this.subscription,
   }) {
     notesController = TextEditingController(text: subscription['notes'] ?? '');
+    _initGroup();
+  }
+
+  Future<void> _initGroup() async {
+    loadingGroup = true;
+    notifyListeners();
+    userGroup = await MongoDbService().getUserGroup(userEmail);
+    loadingGroup = false;
+    notifyListeners();
+  }
+
+  Future<bool> updateGroupSharing(bool share) async {
+    final mongo = MongoDbService();
+    final newGroupId = share ? (userGroup?['id']?.toString()) : null;
+    final success = await mongo.updateSubscriptionGroup(userEmail, id, newGroupId);
+    if (success) {
+      if (newGroupId == null) {
+        subscription.remove('groupId');
+      } else {
+        subscription['groupId'] = newGroupId;
+      }
+      notifyListeners();
+    }
+    return success;
   }
 
   @override

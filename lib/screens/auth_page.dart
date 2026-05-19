@@ -222,61 +222,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           'SubManager',
           style: TextStyle(color: _onSurface, fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -0.5),
         ),
-        const Spacer(),
-        _buildModeToggle(),
       ],
-    );
-  }
-
-  Widget _buildModeToggle() {
-    return Container(
-      width: 160,
-      height: 42,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: _surfContainer,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _outlineVar),
-      ),
-      child: Stack(
-        children: [
-          AnimatedAlign(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            alignment: _isLogin ? Alignment.centerLeft : Alignment.centerRight,
-            child: Container(
-              width: 74,
-              height: 34,
-              decoration: BoxDecoration(
-                color: _primaryContainer,
-                borderRadius: BorderRadius.circular(9),
-              ),
-            ),
-          ),
-          Row(children: [
-            _toggleBtn('Login', true),
-            _toggleBtn('Signup', false),
-          ]),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleBtn(String label, bool value) {
-    final active = _isLogin == value;
-    return SizedBox(
-      width: 74,
-      height: 34,
-      child: TextButton(
-        onPressed: () => _setMode(value),
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          foregroundColor: active ? Colors.white : _onSurfVar,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-        child: Text(label),
-      ),
     );
   }
 

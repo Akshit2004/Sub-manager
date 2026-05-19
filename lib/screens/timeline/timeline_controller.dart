@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -15,9 +16,24 @@ class TimelineController extends ChangeNotifier {
   List<Map<String, dynamic>> thisWeek = [];
   List<Map<String, dynamic>> thisMonth = [];
   List<Map<String, dynamic>> later = [];
+  
+  StreamSubscription<String>? _syncSubscription;
 
   TimelineController({required this.userName, required this.userEmail}) {
     _init();
+    
+    // Listen to background sync notifications to redraw timeline silently
+    _syncSubscription = MongoDbService.syncStream.listen((email) {
+      if (email == userEmail) {
+        loadSubscriptions(silent: true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -37,30 +53,13 @@ class TimelineController extends ChangeNotifier {
     await loadSubscriptions();
   }
 
-  Future<void> loadSubscriptions() async {
-    loading = true;
-    notifyListeners();
-
-    final mongo = MongoDbService();
-    if (!mongo.isConnected) {
-      final uri = dotenv.env['MONGO_URI'];
-      final host = dotenv.env['MONGO_HOST'] ?? '127.0.0.1';
-      final port = int.tryParse(dotenv.env['MONGO_PORT'] ?? '27017') ?? 27017;
-      final dbName = dotenv.env['MONGO_DB_NAME'] ?? 'sub_manager';
-      
-      try {
-        await mongo.connect(
-          host: host,
-          port: port,
-          dbName: dbName,
-          connectionString: uri,
-        );
-      } catch (e) {
-        debugPrint('Timeline DB connection failed: $e');
-      }
+  Future<void> loadSubscriptions({bool silent = false}) async {
+    if (!silent) {
+      loading = true;
+      notifyListeners();
     }
 
-    final list = await mongo.getSubscriptions(userEmail);
+    final list = await MongoDbService().getSubscriptions(userEmail);
     subscriptions = list;
     
     _groupSubscriptions();

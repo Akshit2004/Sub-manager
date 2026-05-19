@@ -27,7 +27,15 @@ class _TimelinePageState extends State<TimelinePage> with TickerProviderStateMix
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
-    )..forward();
+    );
+    
+    _entrance.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) setState(() {});
+      }
+    });
+    
+    _entrance.forward();
   }
 
   @override
@@ -43,6 +51,9 @@ class _TimelinePageState extends State<TimelinePage> with TickerProviderStateMix
       );
 
   Widget _fade(double s, double e, {required Widget child}) {
+    if (_entrance.isCompleted) {
+      return child;
+    }
     final a = _stagger(s, e);
     return FadeTransition(
       opacity: a,

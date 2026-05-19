@@ -28,12 +28,40 @@ class _AddSubSheetState extends State<AddSubSheet> {
   String _hexColor = 'FFE50914';
   bool _saving = false;
 
+  Map<String, dynamic>? _userGroup;
+  bool _loadingGroup = true;
+  bool _shareWithFamily = false;
+
   final List<(String, String)> _categories = [
     ('Entertainment', 'FFE50914'),
     ('Software', 'FFA259FF'),
     ('Utility', 'FF3395FF'),
     ('Other', 'FF6B6B80'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserGroup();
+  }
+
+  Future<void> _checkUserGroup() async {
+    try {
+      final group = await MongoDbService().getUserGroup(widget.userEmail);
+      if (mounted) {
+        setState(() {
+          _userGroup = group;
+          _loadingGroup = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingGroup = false;
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -86,6 +114,7 @@ class _AddSubSheetState extends State<AddSubSheet> {
         'renewalDate': _dateCtrl.text.trim(),
         'category': _category,
         'color': _hexColor,
+        if (_shareWithFamily && _userGroup != null) 'groupId': _userGroup!['id'],
       },
     );
 
@@ -252,6 +281,43 @@ class _AddSubSheetState extends State<AddSubSheet> {
                   );
                 }).toList(),
               ),
+              if (!_loadingGroup && _userGroup != null) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4593A).withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD4593A).withValues(alpha: 0.15)),
+                  ),
+                  child: SwitchListTile(
+                    value: _shareWithFamily,
+                    onChanged: (val) {
+                      setState(() {
+                        _shareWithFamily = val;
+                      });
+                    },
+                    activeColor: const Color(0xFFD4593A),
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.people_alt_rounded, color: Color(0xFFD4593A)),
+                    title: Text(
+                      'Share with ${_userGroup!['name']}',
+                      style: const TextStyle(
+                        color: Color(0xFF1A1A2E),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'All family members will see this on their dashboard and get timelines.',
+                      style: TextStyle(
+                        color: Color(0xFF6B6B80),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
               SizedBox(
                 height: 52,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'sub_details_controller.dart';
 import '../../../utils/currency_utils.dart';
+import '../../../services/mongodb_service.dart';
+import '../../../services/email_service.dart';
 
 class SubDetailsPage extends StatefulWidget {
   final String userEmail;
@@ -22,6 +24,7 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
   late final SubDetailsController _controller;
   late final AnimationController _pulseController;
   late final FocusNode _notesFocusNode;
+  bool _sendingAlert = false;
 
   @override
   void initState() {
@@ -55,6 +58,67 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
     _pulseController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendFamilyAlert(String name, String priceStr, String renewalStr) async {
+    setState(() => _sendingAlert = true);
+    try {
+      final group = await MongoDbService().getUserGroup(widget.userEmail);
+      if (group == null) {
+        _showSnackBar('No active Family Group found.', success: false);
+        setState(() => _sendingAlert = false);
+        return;
+      }
+      final members = List<String>.from(group['members'] ?? []);
+      final success = await EmailService().sendBillingReminder(
+        memberEmails: members,
+        subscriptionName: name,
+        priceStr: priceStr,
+        renewalDate: renewalStr,
+        ownerEmail: widget.userEmail,
+      );
+      if (mounted) {
+        setState(() => _sendingAlert = false);
+        if (success) {
+          _showSnackBar('Synced family alert sent to ${members.length} members!', success: true);
+        } else {
+          _showSnackBar('Failed to broadcast alerts. Check connection.', success: false);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sendingAlert = false);
+        _showSnackBar('An error occurred while broadcasting alerts: $e', success: false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {required bool success}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              success ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13.5),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: success ? const Color(0xFF1A1A2E) : const Color(0xFFD4593A),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
 
@@ -452,6 +516,151 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
                     ),
                   ),
                 ),
+
+                if (_controller.userGroup != null) ...[
+                  const SizedBox(height: 28),
+                  const Padding(
+                     padding: EdgeInsets.symmetric(horizontal: 4),
+                     child: Text(
+                       'FAMILY SYNC',
+                       style: TextStyle(
+                         color: Color(0xFF6B6B80),
+                         fontSize: 11,
+                         fontWeight: FontWeight.w700,
+                         letterSpacing: 1.0,
+                       ),
+                     ),
+                   ),
+                   const SizedBox(height: 8),
+                   Container(
+                     width: double.infinity,
+                     padding: const EdgeInsets.all(18),
+                     decoration: BoxDecoration(
+                       color: s['groupId'] != null
+                           ? const Color(0xFFD4593A).withValues(alpha: 0.05)
+                           : const Color(0xFFFFFFFF),
+                       borderRadius: BorderRadius.circular(16),
+                       border: Border.all(
+                         color: s['groupId'] != null
+                             ? const Color(0xFFD4593A).withValues(alpha: 0.15)
+                             : const Color(0xFFE8E4DE),
+                       ),
+                     ),
+                     child: Column(
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         Row(
+                           children: [
+                             Icon(
+                               s['groupId'] != null ? Icons.people_rounded : Icons.lock_outline_rounded,
+                               color: s['groupId'] != null ? const Color(0xFFD4593A) : const Color(0xFF6B6B80),
+                               size: 20,
+                             ),
+                             const SizedBox(width: 10),
+                             Text(
+                               s['groupId'] != null
+                                   ? 'Shared with ${_controller.userGroup!['name']}'
+                                   : 'Private Subscription',
+                               style: const TextStyle(
+                                 color: Color(0xFF1A1A2E),
+                                 fontSize: 15,
+                                 fontWeight: FontWeight.w700,
+                               ),
+                             ),
+                           ],
+                         ),
+                         const SizedBox(height: 8),
+                         Text(
+                           s['groupId'] != null
+                               ? 'All family members can view this shared bill split and receive automatic email reminder alerts.'
+                               : 'This bill is currently private to your workspace. Share it to sync payment reminders for all group members.',
+                           style: const TextStyle(
+                             color: Color(0xFF6B6B80),
+                             fontSize: 13,
+                             height: 1.3,
+                           ),
+                         ),
+                         const SizedBox(height: 16),
+                         if (s['groupId'] != null) ...[
+                           SizedBox(
+                             height: 44,
+                             width: double.infinity,
+                             child: ElevatedButton.icon(
+                               onPressed: _sendingAlert
+                                   ? null
+                                   : () => _sendFamilyAlert(
+                                         name,
+                                         '$subSymbol${price.toStringAsFixed(2)}',
+                                         renewalStr,
+                                       ),
+                               icon: _sendingAlert
+                                   ? const SizedBox(
+                                       width: 16,
+                                       height: 16,
+                                       child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                                     )
+                                   : const Icon(Icons.campaign_rounded, size: 18),
+                               label: Text(_sendingAlert ? 'Sending Broadcast...' : 'Broadcast Alert to Family'),
+                               style: ElevatedButton.styleFrom(
+                                 backgroundColor: const Color(0xFFD4593A),
+                                 foregroundColor: Colors.white,
+                                 elevation: 0,
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                               ),
+                             ),
+                           ),
+                           const SizedBox(height: 12),
+                           SizedBox(
+                             height: 44,
+                             width: double.infinity,
+                             child: OutlinedButton.icon(
+                               onPressed: () async {
+                                 final success = await _controller.updateGroupSharing(false);
+                                 if (success) {
+                                   _showSnackBar('No longer sharing this subscription with family.', success: true);
+                                   widget.onDataChanged();
+                                 } else {
+                                   _showSnackBar('Failed to update sharing settings.', success: false);
+                                 }
+                               },
+                               icon: const Icon(Icons.lock_rounded, size: 16),
+                               label: const Text('Make Private (Stop Sharing)'),
+                               style: OutlinedButton.styleFrom(
+                                 foregroundColor: const Color(0xFFDC2626),
+                                 side: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                               ),
+                             ),
+                           ),
+                         ] else ...[
+                           SizedBox(
+                             height: 44,
+                             width: double.infinity,
+                             child: ElevatedButton.icon(
+                               onPressed: () async {
+                                 final success = await _controller.updateGroupSharing(true);
+                                 if (success) {
+                                   _showSnackBar('Subscription shared with family group!', success: true);
+                                   widget.onDataChanged();
+                                 } else {
+                                   _showSnackBar('Failed to share subscription.', success: false);
+                                 }
+                               },
+                               icon: const Icon(Icons.share_rounded, size: 16),
+                               label: const Text('Share with Family Group'),
+                               style: ElevatedButton.styleFrom(
+                                 backgroundColor: const Color(0xFF1A1A2E),
+                                 foregroundColor: Colors.white,
+                                 elevation: 0,
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                               ),
+                             ),
+                           ),
+                         ],
+                       ],
+                     ),
+                   ),
+                ],
 
               ],
             ),

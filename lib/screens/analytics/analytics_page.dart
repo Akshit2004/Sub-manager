@@ -28,7 +28,15 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
-    )..forward();
+    );
+    
+    _entrance.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) setState(() {});
+      }
+    });
+    
+    _entrance.forward();
   }
 
   @override
@@ -44,6 +52,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
       );
 
   Widget _fade(double s, double e, {required Widget child}) {
+    if (_entrance.isCompleted) {
+      return child;
+    }
     final a = _stagger(s, e);
     return FadeTransition(
       opacity: a,
@@ -480,30 +491,37 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'MONTHLY SPENDING',
-                                style: TextStyle(
-                                  color: Color(0xFFACA8A1),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.2,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'MONTHLY SPENDING',
+                                  style: TextStyle(
+                                    color: Color(0xFFACA8A1),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                '$baseSymbol${_controller.totalSpend.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  color: Color(0xFF1A1A2E),
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -1.0,
+                                const SizedBox(height: 6),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    '$baseSymbol${_controller.totalSpend.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF1A1A2E),
+                                      fontSize: 34,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -1.0,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 16),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(

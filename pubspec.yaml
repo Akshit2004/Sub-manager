@@ -39,6 +39,7 @@ dependencies:
   crypto: ^3.0.6
   shared_preferences: ^2.3.2
   http: ^1.2.2
+  mailer: ^6.1.0
 
 dev_dependencies:
   flutter_test:
