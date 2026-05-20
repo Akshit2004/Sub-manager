@@ -123,8 +123,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
     if (result['success'] == true) {
       final user = result['user'] as Map<String, dynamic>?;
-      final name = user?['name'] ?? _nameCtrl.text;
-      final email = user?['email'] ?? _emailCtrl.text;
+      final name = (user?['name'] ?? _nameCtrl.text).toString().trim();
+      final email = (user?['email'] ?? _emailCtrl.text).toString().toLowerCase().trim();
 
       try {
         final prefs = await SharedPreferences.getInstance();

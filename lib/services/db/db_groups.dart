@@ -16,7 +16,7 @@ class DbGroupsService {
       if (value is DateTime) {
         copy[key] = value.toIso8601String();
       } else if (value is mongo.ObjectId) {
-        copy[key] = value.toHexString();
+        copy[key] = value.oid;
       } else if (value is Map) {
         copy[key] = _serializeMongoMap(Map<String, dynamic>.from(value));
       }
@@ -69,7 +69,7 @@ class DbGroupsService {
       await _connection.ensureConnected();
       if (!_connection.isConnected || _connection.db == null) return [];
       final coll = _connection.db!.collection('groups');
-      final list = await coll.find(mongo.where.eq('members', cleanEmail)).toList();
+      final list = await coll.find(mongo.where.match('members', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
       
       final prefs = await SharedPreferences.getInstance();
       if (list.isNotEmpty) {
@@ -124,7 +124,7 @@ class DbGroupsService {
       await _connection.ensureConnected();
       if (!_connection.isConnected || _connection.db == null) return [];
       final coll = _connection.db!.collection('groups');
-      final list = await coll.find(mongo.where.eq('pendingInvites', cleanEmail)).toList();
+      final list = await coll.find(mongo.where.match('pendingInvites', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
       final serializedList = list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
       return serializedList;
     } catch (e) {
@@ -171,6 +171,7 @@ class DbGroupsService {
       // Invalidate group cache immediately
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
       _triggerBackgroundGroupSync(cleanEmail);
       
       return {'success': true, 'message': 'Family Group created successfully', 'group': group};
@@ -236,11 +237,11 @@ class DbGroupsService {
       final members = List<String>.from(group['members'] ?? []);
       final pending = List<String>.from(group['pendingInvites'] ?? []);
 
-      if (members.contains(cleanEmail)) {
+      if (members.any((m) => m.toLowerCase().trim() == cleanEmail)) {
         return {'success': false, 'message': 'User is already a member of this group'};
       }
 
-      if (pending.contains(cleanEmail)) {
+      if (pending.any((p) => p.toLowerCase().trim() == cleanEmail)) {
         return {'success': false, 'message': 'User already has a pending invite'};
       }
 
@@ -252,6 +253,7 @@ class DbGroupsService {
       // Invalidate cache
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
       _triggerBackgroundGroupSync(cleanEmail);
       
       return {'success': true, 'message': 'Invite sent successfully'};
@@ -307,9 +309,20 @@ class DbGroupsService {
       if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
       final coll = _connection.db!.collection('groups');
       
+      // Dynamically resolve the exact stored invite casing to prevent zombie invites
+      final group = await coll.findOne(mongo.where.eq('id', groupId));
+      String inviteToRemove = cleanEmail;
+      if (group != null) {
+        final pending = List<String>.from(group['pendingInvites'] ?? []);
+        inviteToRemove = pending.firstWhere(
+          (p) => p.toLowerCase().trim() == cleanEmail,
+          orElse: () => cleanEmail,
+        );
+      }
+
       await coll.updateOne(
         mongo.where.eq('id', groupId),
-        mongo.modify.pull('pendingInvites', cleanEmail),
+        mongo.modify.pull('pendingInvites', inviteToRemove),
       );
       await coll.updateOne(
         mongo.where.eq('id', groupId),
@@ -319,6 +332,7 @@ class DbGroupsService {
       // Invalidate cache immediately
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
       _triggerBackgroundGroupSync(cleanEmail);
       
       return {'success': true, 'message': 'Joined Family Group successfully!'};
@@ -367,14 +381,27 @@ class DbGroupsService {
       await _connection.ensureConnected();
       if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
       final coll = _connection.db!.collection('groups');
+
+      // Dynamically resolve the exact stored invite casing to prevent zombie invites
+      final group = await coll.findOne(mongo.where.eq('id', groupId));
+      String inviteToRemove = cleanEmail;
+      if (group != null) {
+        final pending = List<String>.from(group['pendingInvites'] ?? []);
+        inviteToRemove = pending.firstWhere(
+          (p) => p.toLowerCase().trim() == cleanEmail,
+          orElse: () => cleanEmail,
+        );
+      }
+
       await coll.updateOne(
         mongo.where.eq('id', groupId),
-        mongo.modify.pull('pendingInvites', cleanEmail),
+        mongo.modify.pull('pendingInvites', inviteToRemove),
       );
       
       // Invalidate cache
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
       _triggerBackgroundGroupSync(cleanEmail);
       
       return {'success': true, 'message': 'Invite declined'};
@@ -434,23 +461,29 @@ class DbGroupsService {
         return {'success': false, 'message': 'Group not found'};
       }
 
-      if (group['ownerEmail'] == cleanEmail) {
+      if (group['ownerEmail']?.toString().toLowerCase().trim() == cleanEmail) {
         await coll.remove(mongo.where.eq('id', groupId));
       } else {
+        final members = List<String>.from(group['members'] ?? []);
+        final memberToRemove = members.firstWhere(
+          (m) => m.toLowerCase().trim() == cleanEmail,
+          orElse: () => cleanEmail,
+        );
         await coll.updateOne(
           mongo.where.eq('id', groupId),
-          mongo.modify.pull('members', cleanEmail),
+          mongo.modify.pull('members', memberToRemove),
         );
       }
       
       // Invalidate cache immediately on departure/disband
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
       _triggerBackgroundGroupSync(cleanEmail);
       
       return {
         'success': true,
-        'message': group['ownerEmail'] == cleanEmail 
+        'message': group['ownerEmail']?.toString().toLowerCase().trim() == cleanEmail 
             ? 'Family Group disbanded successfully' 
             : 'Left Family Group successfully'
       };

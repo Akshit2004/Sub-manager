@@ -12,9 +12,9 @@ class SubDetailsController extends ChangeNotifier {
   late final TextEditingController notesController;
 
   SubDetailsController({
-    required this.userEmail,
+    required String userEmail,
     required this.subscription,
-  }) {
+  }) : userEmail = userEmail.toLowerCase().trim() {
     notesController = TextEditingController(text: subscription['notes'] ?? '');
     _initGroup();
   }

@@ -26,8 +26,8 @@ Future<void> main() async {
   String? savedName;
   try {
     final prefs = await SharedPreferences.getInstance();
-    savedEmail = prefs.getString('user_email');
-    savedName = prefs.getString('user_name');
+    savedEmail = prefs.getString('user_email')?.toLowerCase().trim();
+    savedName = prefs.getString('user_name')?.trim();
   } catch (e) {
     debugPrint("Error reading session from local storage: $e");
   }

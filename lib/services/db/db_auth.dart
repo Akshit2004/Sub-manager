@@ -21,6 +21,7 @@ class DbAuthService {
     required String password,
   }) async {
     final cleanEmail = email.toLowerCase().trim();
+    final cleanName = name.trim();
 
     if (kIsWeb) {
       try {
@@ -33,13 +34,20 @@ class DbAuthService {
         }
 
         users[cleanEmail] = {
-          'name': name.trim(),
+          'name': cleanName,
           'password': _hashPassword(password),
           'createdAt': DateTime.now().toIso8601String(),
         };
 
         await prefs.setString('web_users', jsonEncode(users));
-        return {'success': true, 'message': 'Account created successfully (Saved locally)'};
+        return {
+          'success': true,
+          'message': 'Account created successfully (Saved locally)',
+          'user': {
+            'name': cleanName,
+            'email': cleanEmail,
+          },
+        };
       } catch (e) {
         return {'success': false, 'message': 'Web registration failed: $e'};
       }
@@ -53,19 +61,26 @@ class DbAuthService {
 
       final users = _connection.db!.collection('users');
 
-      final existing = await users.findOne(mongo.where.eq('email', cleanEmail));
+      final existing = await users.findOne(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true));
       if (existing != null) {
         return {'success': false, 'message': 'An account with this email already exists'};
       }
 
       await users.insertOne({
-        'name': name.trim(),
+        'name': cleanName,
         'email': cleanEmail,
         'password': _hashPassword(password),
         'createdAt': DateTime.now().toIso8601String(),
       });
 
-      return {'success': true, 'message': 'Account created successfully'};
+      return {
+        'success': true,
+        'message': 'Account created successfully',
+        'user': {
+          'name': cleanName,
+          'email': cleanEmail,
+        },
+      };
     } catch (e) {
       return {'success': false, 'message': 'Registration failed: $e'};
     }
@@ -114,7 +129,7 @@ class DbAuthService {
 
       final users = _connection.db!.collection('users');
 
-      final user = await users.findOne(mongo.where.eq('email', cleanEmail));
+      final user = await users.findOne(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true));
       if (user == null) {
         return {'success': false, 'message': 'No account found with this email'};
       }
@@ -123,16 +138,92 @@ class DbAuthService {
         return {'success': false, 'message': 'Incorrect password'};
       }
 
+      final dbEmail = user['email'] as String? ?? '';
+      if (dbEmail != cleanEmail && dbEmail.isNotEmpty) {
+        _migrateUserEmail(dbEmail, cleanEmail);
+      }
+
       return {
         'success': true,
         'message': 'Login successful',
         'user': {
           'name': user['name'],
-          'email': user['email'],
+          'email': cleanEmail,
         },
       };
     } catch (e) {
       return {'success': false, 'message': 'Login failed: $e'};
     }
+  }
+
+  /// Background migration to convert a user's mixed-case or uncleaned email representation in all collections to lowercase
+  void _migrateUserEmail(String oldEmail, String newEmail) {
+    Future.microtask(() async {
+      try {
+        await _connection.ensureConnected();
+        if (!_connection.isConnected || _connection.db == null) return;
+
+        final db = _connection.db!;
+        debugPrint('Starting self-healing email migration from "$oldEmail" to "$newEmail"...');
+
+        // 1. Migrate user document
+        final usersColl = db.collection('users');
+        await usersColl.updateOne(
+          mongo.where.eq('email', oldEmail),
+          mongo.modify.set('email', newEmail),
+        );
+
+        // 2. Migrate subscriptions
+        final subsColl = db.collection('subscriptions');
+        await subsColl.updateMany(
+          mongo.where.match('email', '^${RegExp.escape(oldEmail)}\$', caseInsensitive: true),
+          mongo.modify.set('email', newEmail),
+        );
+
+        // 3. Migrate groups (ownerEmail)
+        final groupsColl = db.collection('groups');
+        await groupsColl.updateMany(
+          mongo.where.match('ownerEmail', '^${RegExp.escape(oldEmail)}\$', caseInsensitive: true),
+          mongo.modify.set('ownerEmail', newEmail),
+        );
+
+        // 4. Migrate groups (members and pendingInvites arrays)
+        final matchingGroups = await groupsColl.find(
+          mongo.where.match('members', '^${RegExp.escape(oldEmail)}\$', caseInsensitive: true)
+          .or(mongo.where.match('pendingInvites', '^${RegExp.escape(oldEmail)}\$', caseInsensitive: true))
+        ).toList();
+
+        for (final g in matchingGroups) {
+          final members = List<String>.from(g['members'] ?? []);
+          bool changed = false;
+          for (int i = 0; i < members.length; i++) {
+            if (members[i].toLowerCase().trim() == newEmail) {
+              if (members[i] != newEmail) {
+                members[i] = newEmail;
+                changed = true;
+              }
+            }
+          }
+          final pending = List<String>.from(g['pendingInvites'] ?? []);
+          for (int i = 0; i < pending.length; i++) {
+            if (pending[i].toLowerCase().trim() == newEmail) {
+              if (pending[i] != newEmail) {
+                pending[i] = newEmail;
+                changed = true;
+              }
+            }
+          }
+          if (changed) {
+            await groupsColl.updateOne(
+              mongo.where.eq('id', g['id']),
+              mongo.modify.set('members', members).set('pendingInvites', pending),
+            );
+          }
+        }
+        debugPrint('Self-healing email migration completed successfully.');
+      } catch (e) {
+        debugPrint('Error during self-healing email migration: $e');
+      }
+    });
   }
 }

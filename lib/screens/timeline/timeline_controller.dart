@@ -19,7 +19,8 @@ class TimelineController extends ChangeNotifier {
   
   StreamSubscription<String>? _syncSubscription;
 
-  TimelineController({required this.userName, required this.userEmail}) {
+  TimelineController({required this.userName, required String userEmail})
+      : userEmail = userEmail.toLowerCase().trim() {
     _init();
     
     // Listen to background sync notifications to redraw timeline silently

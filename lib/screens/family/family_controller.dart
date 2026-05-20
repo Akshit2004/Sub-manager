@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/mongodb_service.dart';
 import '../../services/email_service.dart';
@@ -13,17 +14,28 @@ class FamilyController extends ChangeNotifier {
   List<Map<String, dynamic>> subscriptions = [];
   bool submitting = false;
 
+  StreamSubscription<String>? _syncSubscription;
+
   FamilyController({
     required this.userName,
-    required this.userEmail,
+    required String userEmail,
     required this.onGroupChanged,
-  }) {
+  }) : userEmail = userEmail.toLowerCase().trim() {
     loadFamilyData();
+
+    // Listen to background synchronizations to update family data silently
+    _syncSubscription = MongoDbService.syncStream.listen((email) {
+      if (email == userEmail) {
+        loadFamilyData(silent: true);
+      }
+    });
   }
 
-  Future<void> loadFamilyData() async {
-    loading = true;
-    notifyListeners();
+  Future<void> loadFamilyData({bool silent = false}) async {
+    if (!silent) {
+      loading = true;
+      notifyListeners();
+    }
 
     final mongo = MongoDbService();
     groups = await mongo.getUserGroups(userEmail);
@@ -125,5 +137,11 @@ class FamilyController extends ChangeNotifier {
     await loadFamilyData();
     onGroupChanged();
     return success;
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 }

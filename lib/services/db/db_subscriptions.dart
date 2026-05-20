@@ -17,7 +17,7 @@ class DbSubscriptionsService {
       if (value is DateTime) {
         copy[key] = value.toIso8601String();
       } else if (value is mongo.ObjectId) {
-        copy[key] = value.toHexString();
+        copy[key] = value.oid;
       } else if (value is Map) {
         copy[key] = _serializeMongoMap(Map<String, dynamic>.from(value));
       }
@@ -48,7 +48,7 @@ class DbSubscriptionsService {
     await _connection.ensureConnected();
     if (!_connection.isConnected || _connection.db == null) return [];
     final coll = _connection.db!.collection('groups');
-    final groups = await coll.find(mongo.where.eq('members', cleanEmail)).toList();
+    final groups = await coll.find(mongo.where.match('members', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
     return groups.map((g) => g['id']?.toString()).whereType<String>().toList();
   }
 
@@ -105,9 +105,9 @@ class DbSubscriptionsService {
       final coll = _connection.db!.collection('subscriptions');
       mongo.SelectorBuilder selector;
       if (groupIds.isNotEmpty) {
-        selector = mongo.where.eq('email', cleanEmail).or(mongo.where.oneFrom('groupId', groupIds));
+        selector = mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).or(mongo.where.oneFrom('groupId', groupIds));
       } else {
-        selector = mongo.where.eq('email', cleanEmail);
+        selector = mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true);
       }
       
       final list = await coll.find(selector).toList();
@@ -215,7 +215,7 @@ class DbSubscriptionsService {
       try {
         final objId = mongo.ObjectId.fromHexString(id);
         final res = await coll.updateOne(
-          mongo.where.eq('email', cleanEmail).and(mongo.where.eq('_id', objId)),
+          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
           mongo.modify.set('notes', notes),
         );
         if (res.isSuccess) {
@@ -227,7 +227,7 @@ class DbSubscriptionsService {
       } catch (_) {}
 
       await coll.updateOne(
-        mongo.where.eq('email', cleanEmail).and(mongo.where.eq('id', id)),
+        mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
         mongo.modify.set('notes', notes),
       );
       
@@ -273,7 +273,7 @@ class DbSubscriptionsService {
       try {
         final objId = mongo.ObjectId.fromHexString(id);
         await coll.updateOne(
-          mongo.where.eq('email', cleanEmail).and(mongo.where.eq('_id', objId)),
+          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
           groupId == null ? mongo.modify.unset('groupId') : mongo.modify.set('groupId', groupId),
         );
         
@@ -285,7 +285,7 @@ class DbSubscriptionsService {
       } catch (_) {}
 
       await coll.updateOne(
-        mongo.where.eq('email', cleanEmail).and(mongo.where.eq('id', id)),
+        mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
         groupId == null ? mongo.modify.unset('groupId') : mongo.modify.set('groupId', groupId),
       );
       
@@ -334,10 +334,10 @@ class DbSubscriptionsService {
       }
 
       if (objectIds.isNotEmpty) {
-        await coll.remove(mongo.where.eq('email', cleanEmail).and(mongo.where.oneFrom('_id', objectIds)));
+        await coll.remove(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.oneFrom('_id', objectIds)));
       }
       if (stringIds.isNotEmpty) {
-        await coll.remove(mongo.where.eq('email', cleanEmail).and(mongo.where.oneFrom('id', stringIds)));
+        await coll.remove(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.oneFrom('id', stringIds)));
       }
       
       // Cancel pending notifications for deleted IDs

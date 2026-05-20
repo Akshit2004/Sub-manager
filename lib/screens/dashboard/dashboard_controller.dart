@@ -24,7 +24,8 @@ class DashboardController extends ChangeNotifier {
   
   StreamSubscription<String>? _syncSubscription;
 
-  DashboardController({required this.userName, required this.userEmail}) {
+  DashboardController({required this.userName, required String userEmail})
+      : userEmail = userEmail.toLowerCase().trim() {
     _init();
     
     // Listen to background synchronizations to update dashboard silently
