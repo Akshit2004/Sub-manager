@@ -139,6 +139,23 @@ class FamilyController extends ChangeNotifier {
     return success;
   }
 
+  Future<Map<String, dynamic>> updateUpiId(String groupId, String upiId) async {
+    final res = await MongoDbService().updateGroupUpiId(groupId, upiId, userEmail);
+
+    if (res['success'] == true) {
+      for (int i = 0; i < groups.length; i++) {
+        if (groups[i]['id'] == groupId) {
+          final updatedGroup = Map<String, dynamic>.from(groups[i]);
+          updatedGroup['upiId'] = upiId.trim();
+          groups[i] = updatedGroup;
+          break;
+        }
+      }
+      notifyListeners();
+    }
+    return res;
+  }
+
   @override
   void dispose() {
     _syncSubscription?.cancel();

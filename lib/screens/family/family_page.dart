@@ -27,9 +27,7 @@ class _FamilyPageState extends State<FamilyPage> {
   int _currentPage = 0;
 
   final _createFormKey = GlobalKey<FormState>();
-  final _inviteFormKey = GlobalKey<FormState>();
   final _groupNameCtrl = TextEditingController();
-  final _inviteEmailCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -45,7 +43,6 @@ class _FamilyPageState extends State<FamilyPage> {
   void dispose() {
     _pageController.dispose();
     _groupNameCtrl.dispose();
-    _inviteEmailCtrl.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -225,8 +222,6 @@ class _FamilyPageState extends State<FamilyPage> {
                                 group: _controller.groups[index],
                                 controller: _controller,
                                 isFirstPage: index == 0,
-                                inviteFormKey: _inviteFormKey,
-                                inviteEmailCtrl: _inviteEmailCtrl,
                               );
                             },
                           ),

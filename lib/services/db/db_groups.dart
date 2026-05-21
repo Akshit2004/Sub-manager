@@ -143,6 +143,7 @@ class DbGroupsService {
       'ownerEmail': cleanEmail,
       'members': [cleanEmail],
       'pendingInvites': <String>[],
+      'upiId': '',
       'createdAt': DateTime.now().toIso8601String(),
     };
 
@@ -489,6 +490,54 @@ class DbGroupsService {
       };
     } catch (e) {
       return {'success': false, 'message': 'Leave group failed: $e'};
+    }
+  }
+
+  /// Update the UPI ID for a family group (payment settings)
+  Future<Map<String, dynamic>> updateGroupUpiId(String groupId, String upiId, String email) async {
+    final cleanEmail = email.toLowerCase().trim();
+
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final groupsJson = prefs.getString('web_groups') ?? '[]';
+        final groups = List<dynamic>.from(jsonDecode(groupsJson));
+        int foundIndex = -1;
+        for (int i = 0; i < groups.length; i++) {
+          final group = Map<String, dynamic>.from(groups[i]);
+          if (group['id'] == groupId) {
+            foundIndex = i;
+            break;
+          }
+        }
+        if (foundIndex == -1) {
+          return {'success': false, 'message': 'Group not found'};
+        }
+        groups[foundIndex]['upiId'] = upiId.trim();
+        await prefs.setString('web_groups', jsonEncode(groups));
+        return {'success': true, 'message': 'UPI ID updated successfully'};
+      } catch (e) {
+        return {'success': false, 'message': 'Web update UPI ID failed: $e'};
+      }
+    }
+
+    try {
+      await _connection.ensureConnected();
+      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
+      final coll = _connection.db!.collection('groups');
+      await coll.updateOne(
+        mongo.where.eq('id', groupId),
+        mongo.modify.set('upiId', upiId.trim()),
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_group_fetch_$cleanEmail');
+      await prefs.remove('local_groups_$cleanEmail');
+      _triggerBackgroundGroupSync(cleanEmail);
+
+      return {'success': true, 'message': 'UPI ID updated successfully'};
+    } catch (e) {
+      return {'success': false, 'message': 'Update UPI ID failed: $e'};
     }
   }
 }

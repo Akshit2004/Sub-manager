@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -21,19 +22,23 @@ class NotificationService {
     try {
       // Initialize Timezones
       tz.initializeTimeZones();
-      // Setup current timezone
-      // In some cases, we need the local timezone name. Defaulting to GMT if empty.
-      final String timeZoneName = DateTime.now().timeZoneName;
+      
+      // Setup current timezone securely via flutter_timezone
+      String timeZoneName = 'UTC';
       try {
+        final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+        timeZoneName = timezoneInfo.identifier;
         tz.setLocalLocation(tz.getLocation(timeZoneName));
-      } catch (_) {
-        // Fallback if local timezone lookup fails
-        tz.setLocalLocation(tz.getLocation('UTC'));
+      } catch (e) {
+        debugPrint('Warning: Timezone initialization failed for "$timeZoneName", falling back to UTC: $e');
+        try {
+          tz.setLocalLocation(tz.getLocation('UTC'));
+        } catch (_) {}
       }
 
-      // Android settings
+      // Android settings - use customized Terracotta brand launcher icon
       const AndroidInitializationSettings initializationSettingsAndroid =
-          AndroidInitializationSettings('@mipmap/ic_launcher');
+          AndroidInitializationSettings('@mipmap/launcher_icon');
 
       // iOS settings
       const DarwinInitializationSettings initializationSettingsDarwin =
@@ -187,7 +192,7 @@ class NotificationService {
         await _scheduleNotification(
           id: notificationId,
           title: '$subName Renewal Warning',
-          body: 'Your $subName subscription ($currency $price) will renew in 5 days on ${renewalDateStr}.',
+          body: 'Your $subName subscription ($currency $price) will renew in 5 days on $renewalDateStr.',
           scheduledDate: alert5DayScheduled,
           payload: 'sub_details:$rawSubId',
         );
@@ -210,7 +215,7 @@ class NotificationService {
         await _scheduleNotification(
           id: notificationId,
           title: '$subName Renewal Alert',
-          body: 'Your $subName subscription ($currency $price) is renewing in 2 days on ${renewalDateStr}!',
+          body: 'Your $subName subscription ($currency $price) is renewing in 2 days on $renewalDateStr!',
           scheduledDate: alert2DayScheduled,
           payload: 'sub_details:$rawSubId',
         );
@@ -247,7 +252,7 @@ class NotificationService {
           ),
           iOS: DarwinNotificationDetails(),
         ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,

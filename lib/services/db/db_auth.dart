@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../email_service.dart';
 import 'db_connection.dart';
 
 class DbAuthService {
@@ -225,5 +227,173 @@ class DbAuthService {
         debugPrint('Error during self-healing email migration: $e');
       }
     });
+  }
+
+  /// Generate and send password reset OTP
+  Future<Map<String, dynamic>> sendPasswordResetOtp(String email) async {
+    final cleanEmail = email.toLowerCase().trim();
+    if (cleanEmail.isEmpty) {
+      return {'success': false, 'message': 'Please enter a valid email address'};
+    }
+
+    // Generate secure 6-digit OTP
+    final random = Random.secure();
+    final otp = List.generate(6, (_) => random.nextInt(10).toString()).join();
+    final expires = DateTime.now().add(const Duration(minutes: 10)).toIso8601String();
+
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final usersJson = prefs.getString('web_users') ?? '{}';
+        final users = Map<String, dynamic>.from(jsonDecode(usersJson));
+
+        if (!users.containsKey(cleanEmail)) {
+          return {'success': false, 'message': 'No account found with this email'};
+        }
+
+        final userData = Map<String, dynamic>.from(users[cleanEmail]);
+        userData['resetOtp'] = otp;
+        userData['resetOtpExpires'] = expires;
+        users[cleanEmail] = userData;
+
+        await prefs.setString('web_users', jsonEncode(users));
+
+        // Deliver OTP via EmailService
+        final emailSent = await EmailService().sendPasswordResetOtpEmail(
+          recipientEmail: cleanEmail,
+          otp: otp,
+        );
+
+        if (!emailSent) {
+          return {'success': false, 'message': 'Failed to send OTP email. Please try again.'};
+        }
+
+        return {'success': true, 'message': 'OTP sent successfully to your email.'};
+      } catch (e) {
+        return {'success': false, 'message': 'Web OTP generation failed: $e'};
+      }
+    }
+
+    try {
+      await _connection.ensureConnected();
+      if (!_connection.isConnected || _connection.db == null) {
+        return {'success': false, 'message': 'Database not connected'};
+      }
+
+      final users = _connection.db!.collection('users');
+
+      final user = await users.findOne(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true));
+      if (user == null) {
+        return {'success': false, 'message': 'No account found with this email'};
+      }
+
+      // Update user with resetOtp and resetOtpExpires
+      await users.updateOne(
+        mongo.where.eq('email', user['email']),
+        mongo.modify.set('resetOtp', otp).set('resetOtpExpires', expires),
+      );
+
+      // Deliver OTP via EmailService
+      final emailSent = await EmailService().sendPasswordResetOtpEmail(
+        recipientEmail: cleanEmail,
+        otp: otp,
+      );
+
+      if (!emailSent) {
+        return {'success': false, 'message': 'Failed to send OTP email. Please try again.'};
+      }
+
+      return {'success': true, 'message': 'OTP sent successfully to your email.'};
+    } catch (e) {
+      return {'success': false, 'message': 'OTP generation failed: $e'};
+    }
+  }
+
+  /// Verify OTP and reset password
+  Future<Map<String, dynamic>> verifyOtpAndResetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final cleanEmail = email.toLowerCase().trim();
+    final cleanOtp = otp.trim();
+    if (cleanEmail.isEmpty || cleanOtp.isEmpty || newPassword.isEmpty) {
+      return {'success': false, 'message': 'All fields are required'};
+    }
+
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final usersJson = prefs.getString('web_users') ?? '{}';
+        final users = Map<String, dynamic>.from(jsonDecode(usersJson));
+
+        if (!users.containsKey(cleanEmail)) {
+          return {'success': false, 'message': 'No account found with this email'};
+        }
+
+        final userData = Map<String, dynamic>.from(users[cleanEmail]);
+        final storedOtp = userData['resetOtp'] as String?;
+        final storedExpiresStr = userData['resetOtpExpires'] as String?;
+
+        if (storedOtp == null || storedExpiresStr == null || storedOtp != cleanOtp) {
+          return {'success': false, 'message': 'Invalid verification code'};
+        }
+
+        final expires = DateTime.parse(storedExpiresStr);
+        if (DateTime.now().isAfter(expires)) {
+          return {'success': false, 'message': 'Verification code has expired'};
+        }
+
+        // Update password and clear OTP
+        userData['password'] = _hashPassword(newPassword);
+        userData.remove('resetOtp');
+        userData.remove('resetOtpExpires');
+        users[cleanEmail] = userData;
+
+        await prefs.setString('web_users', jsonEncode(users));
+        return {'success': true, 'message': 'Password has been reset successfully.'};
+      } catch (e) {
+        return {'success': false, 'message': 'Web password reset failed: $e'};
+      }
+    }
+
+    try {
+      await _connection.ensureConnected();
+      if (!_connection.isConnected || _connection.db == null) {
+        return {'success': false, 'message': 'Database not connected'};
+      }
+
+      final users = _connection.db!.collection('users');
+
+      final user = await users.findOne(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true));
+      if (user == null) {
+        return {'success': false, 'message': 'No account found with this email'};
+      }
+
+      final storedOtp = user['resetOtp'] as String?;
+      final storedExpiresStr = user['resetOtpExpires'] as String?;
+
+      if (storedOtp == null || storedExpiresStr == null || storedOtp != cleanOtp) {
+        return {'success': false, 'message': 'Invalid verification code'};
+      }
+
+      final expires = DateTime.parse(storedExpiresStr);
+      if (DateTime.now().isAfter(expires)) {
+        return {'success': false, 'message': 'Verification code has expired'};
+      }
+
+      // Update password and clear OTP
+      await users.updateOne(
+        mongo.where.eq('email', user['email']),
+        mongo.modify
+            .set('password', _hashPassword(newPassword))
+            .unset('resetOtp')
+            .unset('resetOtpExpires'),
+      );
+
+      return {'success': true, 'message': 'Password has been reset successfully.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Password reset failed: $e'};
+    }
   }
 }

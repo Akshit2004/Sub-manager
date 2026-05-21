@@ -10,6 +10,7 @@ import 'widgets/add_subscription_sheet.dart';
 import '../timeline/timeline_page.dart';
 import '../analytics/analytics_page.dart';
 import '../family/family_page.dart';
+import '../../services/notification_service.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userName;
@@ -43,6 +44,10 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     });
     
     _entrance.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService().requestPermissions();
+    });
   }
 
   void _onStateChange() {

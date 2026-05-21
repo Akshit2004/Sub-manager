@@ -61,6 +61,20 @@ class MongoDbService {
     required String password,
   }) => _auth.login(email: email, password: password);
 
+  Future<Map<String, dynamic>> sendPasswordResetOtp(String email) =>
+      _auth.sendPasswordResetOtp(email);
+
+  Future<Map<String, dynamic>> verifyOtpAndResetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) =>
+      _auth.verifyOtpAndResetPassword(
+        email: email,
+        otp: otp,
+        newPassword: newPassword,
+      );
+
   // ── Subscriptions Service Delegation ────────────────────
 
   Future<List<Map<String, dynamic>>> getSubscriptions(String email) =>
@@ -74,6 +88,9 @@ class MongoDbService {
 
   Future<bool> updateSubscriptionGroup(String email, String id, String? groupId) =>
       _subs.updateSubscriptionGroup(email, id, groupId);
+
+  Future<bool> updateSubscription(String email, String id, Map<String, dynamic> data) =>
+      _subs.updateSubscription(email, id, data);
 
   Future<bool> deleteSubscriptions(String email, List<String> ids) =>
       _subs.deleteSubscriptions(email, ids);
@@ -100,4 +117,7 @@ class MongoDbService {
 
   Future<Map<String, dynamic>> leaveGroup(String groupId, String email) =>
       _groups.leaveGroup(groupId, email);
+
+  Future<Map<String, dynamic>> updateGroupUpiId(String groupId, String upiId, String email) =>
+      _groups.updateGroupUpiId(groupId, upiId, email);
 }

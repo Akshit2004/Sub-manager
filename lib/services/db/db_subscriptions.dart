@@ -300,6 +300,61 @@ class DbSubscriptionsService {
     }
   }
 
+  /// Update subscription fields (name, plan, price, currency, renewalDate, category, color)
+  Future<bool> updateSubscription(String email, String id, Map<String, dynamic> data) async {
+    final cleanEmail = email.toLowerCase().trim();
+
+    if (kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions(cleanEmail);
+        for (var item in list) {
+          final itemId = (item['id'] ?? item['createdAt'] ?? '').toString();
+          if (itemId == id) {
+            data.forEach((key, value) { item[key] = value; });
+            break;
+          }
+        }
+        await prefs.setString('web_subs_$cleanEmail', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Web updateSubscription failed: $e');
+        return false;
+      }
+    }
+
+    try {
+      await _connection.ensureConnected();
+      if (!_connection.isConnected || _connection.db == null) return false;
+      final coll = _connection.db!.collection('subscriptions');
+
+      final update = mongo.ModifierBuilder();
+      data.forEach((key, value) { update.set(key, value); });
+
+      try {
+        final objId = mongo.ObjectId.fromHexString(id);
+        await coll.updateOne(
+          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
+          update,
+        );
+      } catch (_) {
+        await coll.updateOne(
+          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
+          update,
+        );
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_fetch_$cleanEmail');
+      _triggerBackgroundSync(cleanEmail);
+
+      return true;
+    } catch (e) {
+      debugPrint('Native updateSubscription failed: $e');
+      return false;
+    }
+  }
+
   /// Delete subscription (forces refresh)
   Future<bool> deleteSubscriptions(String email, List<String> ids) async {
     final cleanEmail = email.toLowerCase().trim();

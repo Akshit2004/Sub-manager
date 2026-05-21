@@ -136,4 +136,52 @@ class EmailService {
       return false;
     }
   }
+
+  /// Send a password reset OTP email
+  Future<bool> sendPasswordResetOtpEmail({
+    required String recipientEmail,
+    required String otp,
+  }) async {
+    final message = Message()
+      ..from = Address(_user, 'Sub Manager Support')
+      ..recipients.add(recipientEmail.trim().toLowerCase())
+      ..subject = '🔐 Your Sub Manager Password Reset OTP'
+      ..html = '''
+        <div style="font-family: sans-serif; padding: 24px; color: #1A1A2E; max-width: 600px; margin: 0 auto; border: 1px solid #E8E4DE; border-radius: 16px; background-color: #FFFFFF;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h2 style="color: #D4593A; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Sub Manager Pro</h2>
+            <span style="font-size: 11px; color: #6B6B80; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">Security Verification</span>
+          </div>
+          
+          <p style="font-size: 15px; line-height: 1.5; color: #33334d; margin-top: 0;">
+            Hello,
+          </p>
+          <p style="font-size: 15px; line-height: 1.5; color: #33334d;">
+            We received a request to reset your Sub Manager account password. Use the following One-Time Password (OTP) to proceed with resetting your password:
+          </p>
+          
+          <div style="background-color: #FAF9F6; border: 1px solid #E8E4DE; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+            <span style="font-size: 12px; color: #6B6B80; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; display: block; margin-bottom: 8px;">Verification Code</span>
+            <span style="font-size: 36px; font-weight: 800; color: #D4593A; letter-spacing: 6px; display: inline-block;">$otp</span>
+          </div>
+          
+          <p style="font-size: 14px; line-height: 1.5; color: #6B6B80;">
+            This verification code is valid for <strong>10 minutes</strong>. If you did not request a password reset, please ignore this email or contact support if you have concerns.
+          </p>
+          
+          <p style="font-size: 11px; color: #ACA8A1; border-top: 1px solid #E8E4DE; padding-top: 16px; margin-top: 28px; text-align: center;">
+            This is an automated security message from Sub Manager Pro.
+          </p>
+        </div>
+      ''';
+
+    try {
+      await send(message, _smtpServer);
+      debugPrint('Reset OTP email sent successfully to $recipientEmail');
+      return true;
+    } catch (e) {
+      debugPrint('Failed to send reset OTP email: $e');
+      return false;
+    }
+  }
 }

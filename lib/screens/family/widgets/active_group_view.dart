@@ -1,32 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../family_controller.dart';
 import 'family_invite_card.dart';
+import '../../../utils/currency_utils.dart';
 
-class ActiveGroupView extends StatelessWidget {
+class ActiveGroupView extends StatefulWidget {
   final Map<String, dynamic> group;
   final FamilyController controller;
   final bool isFirstPage;
-  
-  final GlobalKey<FormState> inviteFormKey;
-  final TextEditingController inviteEmailCtrl;
 
   const ActiveGroupView({
     super.key,
     required this.group,
     required this.controller,
     required this.isFirstPage,
-    required this.inviteFormKey,
-    required this.inviteEmailCtrl,
   });
 
   @override
+  State<ActiveGroupView> createState() => _ActiveGroupViewState();
+}
+
+class _ActiveGroupViewState extends State<ActiveGroupView> {
+  final _inviteFormKey = GlobalKey<FormState>();
+  late final TextEditingController _inviteEmailCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _inviteEmailCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _inviteEmailCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final name = group['name'] ?? 'Family Group';
-    final owner = group['ownerEmail'] ?? '';
-    final members = List<String>.from(group['members'] ?? []);
-    final pending = List<String>.from(group['pendingInvites'] ?? []);
-    final isOwner = owner.toLowerCase().trim() == controller.userEmail.toLowerCase().trim();
-    final linkedSubs = controller.subscriptions.where((s) => s['groupId'] == group['id']).toList();
+    final name = widget.group['name'] ?? 'Family Group';
+    final owner = widget.group['ownerEmail'] ?? '';
+    final members = List<String>.from(widget.group['members'] ?? []);
+    final pending = List<String>.from(widget.group['pendingInvites'] ?? []);
+    final isOwner = owner.toLowerCase().trim() == widget.controller.userEmail.toLowerCase().trim();
+    final linkedSubs = widget.controller.subscriptions.where((s) => s['groupId'] == widget.group['id']).toList();
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -35,17 +52,17 @@ class ActiveGroupView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Invites logic specific to the first active page if exists
-          if (isFirstPage && controller.invites.isNotEmpty) ...[
+          if (widget.isFirstPage && widget.controller.invites.isNotEmpty) ...[
             _buildSectionHeader('Incoming Invitations'),
             const SizedBox(height: 12),
-            ...controller.invites.map((invite) => FamilyInviteCard(
+            ...widget.controller.invites.map((invite) => FamilyInviteCard(
                   invite: invite,
                   onAccept: () async {
-                    final res = await controller.acceptInvite(invite['id']);
+                    final res = await widget.controller.acceptInvite(invite['id']);
                     if (context.mounted) _showSnackBar(context, res['message'] ?? '', res['success'] == true);
                   },
                   onDecline: () async {
-                    final res = await controller.declineInvite(invite['id']);
+                    final res = await widget.controller.declineInvite(invite['id']);
                     if (context.mounted) _showSnackBar(context, res['message'] ?? '', res['success'] == true);
                   },
                 )),
@@ -86,7 +103,7 @@ class ActiveGroupView extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Created on ${group['createdAt']?.toString().substring(0, 10) ?? 'Recently'}',
+                            'Created on ${widget.group['createdAt']?.toString().substring(0, 10) ?? 'Recently'}',
                             style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12.5),
                           ),
                         ],
@@ -153,7 +170,7 @@ class ActiveGroupView extends StatelessWidget {
             children: [
               _buildSectionHeader('Shared Subscriptions'),
               TextButton.icon(
-                onPressed: () => _showLinkSubscriptionsSheet(context, group),
+                onPressed: () => _handleLinkSubscriptions(context),
                 icon: const Icon(Icons.link_rounded, size: 16, color: Color(0xFFD4593A)),
                 label: const Text(
                   'Link Plans',
@@ -183,7 +200,7 @@ class ActiveGroupView extends StatelessWidget {
                   SizedBox(
                     height: 36,
                     child: OutlinedButton(
-                      onPressed: () => _showLinkSubscriptionsSheet(context, group),
+                      onPressed: () => _handleLinkSubscriptions(context),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFD4593A),
                         side: const BorderSide(color: Color(0xFFD4593A)),
@@ -262,6 +279,8 @@ class ActiveGroupView extends StatelessWidget {
             ),
           const SizedBox(height: 32),
 
+          if (!isOwner) _buildPaySection(context, widget.group, linkedSubs, members, name),
+
           // ── Members List
           _buildSectionHeader('Family Members'),
           const SizedBox(height: 12),
@@ -275,7 +294,7 @@ class ActiveGroupView extends StatelessWidget {
               children: [
                 ...List.generate(members.length, (i) {
                   final m = members[i];
-                  final isMe = m.toLowerCase().trim() == controller.userEmail.toLowerCase().trim();
+                  final isMe = m.toLowerCase().trim() == widget.controller.userEmail.toLowerCase().trim();
                   final isGroupOwner = m.toLowerCase().trim() == owner.toLowerCase().trim();
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -300,7 +319,7 @@ class ActiveGroupView extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isMe ? '${controller.userName} (You)' : m.split('@')[0],
+                                isMe ? '${widget.controller.userName} (You)' : m.split('@')[0],
                                 style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14.5),
                               ),
                               const SizedBox(height: 2),
@@ -374,12 +393,12 @@ class ActiveGroupView extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFE8E4DE)),
               ),
               child: Form(
-                key: inviteFormKey,
+                key: _inviteFormKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextFormField(
-                      controller: inviteEmailCtrl,
+                      controller: _inviteEmailCtrl,
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Enter an email';
                         if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
@@ -396,26 +415,121 @@ class ActiveGroupView extends StatelessWidget {
                     SizedBox(
                       height: 52,
                       child: ElevatedButton(
-                        onPressed: controller.submitting ? null : () async {
-                          if (!inviteFormKey.currentState!.validate()) return;
-                          final email = inviteEmailCtrl.text.trim();
-                          final res = await controller.sendInvite(group['id'], group['name'] ?? 'Group', email);
+                        onPressed: widget.controller.submitting ? null : () async {
+                          if (!_inviteFormKey.currentState!.validate()) return;
+                          final email = _inviteEmailCtrl.text.trim();
+                          final res = await widget.controller.sendInvite(widget.group['id'], widget.group['name'] ?? 'Group', email);
                           if (context.mounted) _showSnackBar(context, res['message'] ?? '', res['success'] == true);
                           if (res['success'] == true) {
-                            inviteEmailCtrl.clear();
+                            _inviteEmailCtrl.clear();
                           }
                         },
-                        child: controller.submitting
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                              )
-                            : const Text('Send Group Invite'),
-                      ),
+                      child: widget.controller.submitting
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                            )
+                          : const Text('Send Group Invite'),
+                    ),
                     ),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // ── Payment Settings
+            _buildSectionHeader('Payment Settings'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE8E4DE)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.payments_rounded, size: 20, color: const Color(0xFFD4593A)),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Receive payments via UPI',
+                        style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14.5),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F7F4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE8E4DE)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Current UPI: ',
+                          style: TextStyle(color: const Color(0xFF6B6B80), fontSize: 13.5),
+                        ),
+                        Expanded(
+                          child: Text(
+                            (widget.group['upiId']?.toString() ?? '').isNotEmpty
+                                ? widget.group['upiId'].toString()
+                                : 'Not set',
+                            style: TextStyle(
+                              color: (widget.group['upiId']?.toString() ?? '').isNotEmpty
+                                  ? const Color(0xFF1A1A2E)
+                                  : const Color(0xFFACA8A1),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final upiId = await _showUpiIdDialog(context, widget.group);
+                        if (upiId != null && context.mounted) {
+                          // Let the dialog exit animation finish before
+                          // triggering a controller rebuild.
+                          await Future.delayed(const Duration(milliseconds: 350));
+                          if (!context.mounted) return;
+                          final res = await widget.controller.updateUpiId(widget.group['id'], upiId);
+                          if (context.mounted) {
+                            _showSnackBar(context, res['message'] ?? '', res['success'] == true);
+                          }
+                        }
+                      },
+                      icon: Icon(
+                        (widget.group['upiId']?.toString() ?? '').isNotEmpty
+                            ? Icons.edit_rounded
+                            : Icons.add_rounded,
+                        size: 16,
+                      ),
+                      label: Text(
+                        (widget.group['upiId']?.toString() ?? '').isNotEmpty
+                            ? 'Update UPI ID'
+                            : 'Set UPI ID',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFD4593A),
+                        side: const BorderSide(color: Color(0xFFD4593A)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 32),
@@ -444,7 +558,7 @@ class ActiveGroupView extends StatelessWidget {
                 SizedBox(
                   height: 48,
                   child: OutlinedButton(
-                    onPressed: () => _handleLeaveGroup(context, group, isOwner),
+                    onPressed: () => _handleLeaveGroup(context, widget.group, isOwner),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
                       side: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
@@ -540,18 +654,38 @@ class ActiveGroupView extends StatelessWidget {
     );
 
     if (confirmed == true && context.mounted) {
-      final res = await controller.leaveGroup(group['id']);
+      // Let the dialog exit animation finish before triggering a controller rebuild.
+      await Future.delayed(const Duration(milliseconds: 350));
+      if (!context.mounted) return;
+      final res = await widget.controller.leaveGroup(group['id']);
       if (context.mounted) _showSnackBar(context, res['message'] ?? '', res['success'] == true);
     }
   }
 
-  void _showLinkSubscriptionsSheet(BuildContext context, Map<String, dynamic> group) {
-    final privateSubs = controller.subscriptions.where((s) => s['groupId'] == null).toList();
+  Future<void> _handleLinkSubscriptions(BuildContext context) async {
+    final selectedSubIds = await _showLinkSubscriptionsSheet(context, widget.group);
+    if (selectedSubIds != null && selectedSubIds.isNotEmpty && context.mounted) {
+      // Let the sheet exit animation finish before triggering a controller rebuild.
+      await Future.delayed(const Duration(milliseconds: 350));
+      if (!context.mounted) return;
+      final success = await widget.controller.linkSubscriptions(widget.group['id'], selectedSubIds);
+      if (context.mounted) {
+        if (success) {
+          _showSnackBar(context, 'Subscriptions linked successfully!', true);
+        } else {
+          _showSnackBar(context, 'Some subscriptions failed to link.', false);
+        }
+      }
+    }
+  }
+
+  Future<List<String>?> _showLinkSubscriptionsSheet(BuildContext context, Map<String, dynamic> group) async {
+    final privateSubs = widget.controller.subscriptions.where((s) => s['groupId'] == null).toList();
     
     if (privateSubs.isEmpty) {
-      showDialog(
+      await showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (ctx) => AlertDialog(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -562,27 +696,27 @@ class ActiveGroupView extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('Understood', style: TextStyle(color: Color(0xFFD4593A), fontWeight: FontWeight.bold)),
             ),
           ],
         ),
       );
-      return;
+      return null;
     }
 
-    showModalBottomSheet(
+    return showModalBottomSheet<List<String>>(
       context: context,
       backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
+      builder: (sheetCtx) {
         List<String> selectedSubIds = [];
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (builderCtx, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                bottom: MediaQuery.of(builderCtx).viewInsets.bottom + 24,
                 left: 24,
                 right: 24,
                 top: 24,
@@ -599,7 +733,7 @@ class ActiveGroupView extends StatelessWidget {
                         style: TextStyle(color: Color(0xFF1A1A2E), fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () => Navigator.of(builderCtx).pop(null),
                         icon: const Icon(Icons.close_rounded, color: Color(0xFF6B6B80)),
                       ),
                     ],
@@ -611,11 +745,11 @@ class ActiveGroupView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                    constraints: BoxConstraints(maxHeight: MediaQuery.of(builderCtx).size.height * 0.4),
                     child: ListView.builder(
                       shrinkWrap: true,
                       itemCount: privateSubs.length,
-                      itemBuilder: (context, index) {
+                      itemBuilder: (listCtx, index) {
                         final sub = privateSubs[index];
                         final subId = sub['_id']?.toString() ?? sub['id'] ?? sub['createdAt'] ?? '';
                         final cleanId = subId.toString().replaceAll('ObjectId("', '').replaceAll('")', '');
@@ -671,16 +805,8 @@ class ActiveGroupView extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: selectedSubIds.isEmpty
                           ? null
-                          : () async {
-                              Navigator.of(context).pop();
-                              final success = await controller.linkSubscriptions(group['id'], selectedSubIds);
-                              if (context.mounted) {
-                                if (success) {
-                                  _showSnackBar(context, 'Subscriptions linked successfully!', true);
-                                } else {
-                                  _showSnackBar(context, 'Some subscriptions failed to link.', false);
-                                }
-                              }
+                          : () {
+                              Navigator.of(builderCtx).pop(selectedSubIds);
                             },
                       child: Text('Link Selected (${selectedSubIds.length})'),
                     ),
@@ -724,7 +850,10 @@ class ActiveGroupView extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      final success = await controller.unlinkSubscription(subId);
+      // Let the dialog exit animation finish before triggering a controller rebuild.
+      await Future.delayed(const Duration(milliseconds: 350));
+      if (!context.mounted) return;
+      final success = await widget.controller.unlinkSubscription(subId);
       if (context.mounted) {
         if (success) {
           _showSnackBar(context, 'Subscription unlinked successfully.', true);
@@ -733,5 +862,159 @@ class ActiveGroupView extends StatelessWidget {
         }
       }
     }
+  }
+
+  Future<String?> _showUpiIdDialog(BuildContext context, Map<String, dynamic> group) {
+    final ctrl = TextEditingController(text: group['upiId']?.toString() ?? '');
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('UPI Payment ID', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your UPI ID so family members can pay you directly via GPay, Paytm, or PhonePe.',
+              style: TextStyle(color: Color(0xFF6B6B80), fontSize: 13.5, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                hintText: 'e.g. familyhead@paytm',
+                prefixIcon: Icon(Icons.payments_rounded, color: Color(0xFFD4593A)),
+              ),
+              style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w600, fontSize: 14.5),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF6B6B80), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final upiId = ctrl.text.trim();
+              Navigator.of(ctx).pop(upiId);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD4593A),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _payViaUpi(BuildContext context, String upiId, double amount, String groupName) async {
+    final uri = Uri.parse(
+      'upi://pay?pa=$upiId'
+      '&pn=${Uri.encodeComponent(groupName)}'
+      '&am=${amount.toStringAsFixed(2)}'
+      '&cu=INR'
+      '&tn=Monthly+subscription+share',
+    );
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && context.mounted) {
+        _showSnackBar(context, 'No UPI app found. Install GPay, Paytm, or PhonePe.', false);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        _showSnackBar(context, 'Could not open UPI app. Please try again.', false);
+      }
+    }
+  }
+
+  Widget _buildPaySection(BuildContext context, Map<String, dynamic> group, List<Map<String, dynamic>> linkedSubs, List<String> members, String groupName) {
+    final upiId = group['upiId']?.toString() ?? '';
+    if (upiId.isEmpty || linkedSubs.isEmpty) return const SizedBox.shrink();
+
+    double totalLinkedCost = 0.0;
+    for (final sub in linkedSubs) {
+      final price = (sub['price'] as num?)?.toDouble() ?? 0.0;
+      final currency = (sub['currency'] ?? 'USD').toString().toUpperCase();
+      totalLinkedCost += CurrencyUtils.convert(price, currency, 'INR');
+    }
+    final share = totalLinkedCost / members.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionHeader('Pay Family Head'),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE8E4DE)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.account_balance_wallet_rounded, size: 20, color: const Color(0xFFD4593A)),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Your Monthly Share',
+                    style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14.5),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...linkedSubs.map((sub) {
+                final subPrice = (sub['price'] as num?)?.toDouble() ?? 0.0;
+                final subCurrency = (sub['currency'] ?? 'USD').toString().toUpperCase();
+                final subInr = CurrencyUtils.convert(subPrice, subCurrency, 'INR');
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(sub['name'] ?? 'Plan', style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 13.5)),
+                      Text('₹${subInr.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF6B6B80), fontSize: 13)),
+                    ],
+                  ),
+                );
+              }),
+              const Divider(color: Color(0xFFE8E4DE), height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total', style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14)),
+                  Text('₹${totalLinkedCost.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w700, fontSize: 14)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Your share: ₹${share.toStringAsFixed(0)}/mo (${members.length} members)',
+                style: const TextStyle(color: Color(0xFF6B6B80), fontSize: 12.5),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: () => _payViaUpi(context, upiId, share, groupName),
+                  icon: const Icon(Icons.payments_rounded, size: 18),
+                  label: Text('Pay ₹${share.toStringAsFixed(0)} via UPI'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
+    );
   }
 }

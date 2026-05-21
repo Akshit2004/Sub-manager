@@ -12,8 +12,6 @@ Future<void> main() async {
   // Initialize notification service
   final notificationService = NotificationService();
   await notificationService.init();
-  // Request notifications permission asynchronously
-  notificationService.requestPermissions();
 
   try {
     await dotenv.load(fileName: ".env");

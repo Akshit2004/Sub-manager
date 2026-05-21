@@ -3,6 +3,7 @@ import 'sub_details_controller.dart';
 import '../../../utils/currency_utils.dart';
 import '../../../services/mongodb_service.dart';
 import '../../../services/email_service.dart';
+import '../dashboard/widgets/add_subscription_sheet.dart';
 
 class SubDetailsPage extends StatefulWidget {
   final String userEmail;
@@ -173,7 +174,23 @@ class _SubDetailsPageState extends State<SubDetailsPage> with TickerProviderStat
               IconButton(
                 icon: const Icon(Icons.edit_outlined, color: Color(0xFF1A1A2E)),
                 onPressed: () {
-                  // Future: open edit panel
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.white,
+                    isScrollControlled: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    builder: (ctx) => AddSubSheet(
+                      userEmail: widget.userEmail,
+                      existingSub: _controller.subscription,
+                      onSaved: () {
+                        Navigator.of(ctx).pop();
+                        widget.onDataChanged();
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  );
                 },
               ),
             ],

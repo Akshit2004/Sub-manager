@@ -5,11 +5,13 @@ import '../../../utils/currency_utils.dart';
 class AddSubSheet extends StatefulWidget {
   final String userEmail;
   final VoidCallback onSaved;
+  final Map<String, dynamic>? existingSub;
 
   const AddSubSheet({
     super.key,
     required this.userEmail,
     required this.onSaved,
+    this.existingSub,
   });
 
   @override
@@ -40,9 +42,24 @@ class _AddSubSheetState extends State<AddSubSheet> {
     ('Other', 'FF6B6B80'),
   ];
 
+  bool get _isEditMode => widget.existingSub != null;
+
   @override
   void initState() {
     super.initState();
+    if (_isEditMode) {
+      final sub = widget.existingSub!;
+      _nameCtrl.text = sub['name'] ?? '';
+      _planCtrl.text = sub['plan'] ?? '';
+      _priceCtrl.text = (sub['price'] as num?)?.toString() ?? '';
+      _dateCtrl.text = sub['renewalDate'] ?? '';
+      _currency = (sub['currency'] ?? 'USD').toString().toUpperCase();
+      _category = sub['category'] ?? 'Entertainment';
+      _hexColor = sub['color'] ?? 'FF6B6B80';
+      _selectedGroupId = sub['groupId'];
+      _shareWithFamily = sub['groupId'] != null;
+      _loadingGroup = false;
+    }
     _checkUserGroup();
   }
 
@@ -108,19 +125,27 @@ class _AddSubSheetState extends State<AddSubSheet> {
 
     setState(() => _saving = true);
 
-    final result = await MongoDbService().addSubscription(
-      widget.userEmail,
-      {
-        'name': _nameCtrl.text.trim(),
-        'plan': _planCtrl.text.trim(),
-        'price': double.tryParse(_priceCtrl.text) ?? 0.0,
-        'currency': _currency,
-        'renewalDate': _dateCtrl.text.trim(),
-        'category': _category,
-        'color': _hexColor,
-        if (_shareWithFamily && _selectedGroupId != null) 'groupId': _selectedGroupId,
-      },
-    );
+    final data = {
+      'name': _nameCtrl.text.trim(),
+      'plan': _planCtrl.text.trim(),
+      'price': double.tryParse(_priceCtrl.text) ?? 0.0,
+      'currency': _currency,
+      'renewalDate': _dateCtrl.text.trim(),
+      'category': _category,
+      'color': _hexColor,
+      if (_shareWithFamily && _selectedGroupId != null) 'groupId': _selectedGroupId,
+    };
+
+    bool result;
+    if (_isEditMode) {
+      final sub = widget.existingSub!;
+      final subId = (sub['_id'] != null)
+          ? sub['_id'].toString().replaceAll('ObjectId("', '').replaceAll('")', '')
+          : (sub['id'] ?? sub['createdAt'] ?? '').toString();
+      result = await MongoDbService().updateSubscription(widget.userEmail, subId, data);
+    } else {
+      result = await MongoDbService().addSubscription(widget.userEmail, data);
+    }
 
     if (!mounted) return;
     setState(() => _saving = false);
@@ -153,9 +178,9 @@ class _AddSubSheetState extends State<AddSubSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Add New Subscription',
-                    style: TextStyle(
+                  Text(
+                    _isEditMode ? 'Edit Subscription' : 'Add New Subscription',
+                    style: const TextStyle(
                       color: Color(0xFF1A1A2E),
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
@@ -382,9 +407,9 @@ class _AddSubSheetState extends State<AddSubSheet> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                         )
-                      : const Text(
-                          'Save Subscription',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                      : Text(
+                          _isEditMode ? 'Update Subscription' : 'Save Subscription',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                 ),
               ),

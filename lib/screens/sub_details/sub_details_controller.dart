@@ -71,6 +71,16 @@ class SubDetailsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> updateSubscription(Map<String, dynamic> data) async {
+    final mongo = MongoDbService();
+    final success = await mongo.updateSubscription(userEmail, id, data);
+    if (success) {
+      subscription.addAll(data);
+      notifyListeners();
+    }
+    return success;
+  }
+
   Future<bool> cancelSubscription() async {
     deleting = true;
     notifyListeners();
