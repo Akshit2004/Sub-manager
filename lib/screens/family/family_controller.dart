@@ -13,8 +13,11 @@ class FamilyController extends ChangeNotifier {
   List<Map<String, dynamic>> invites = [];
   List<Map<String, dynamic>> subscriptions = [];
   bool submitting = false;
+  List<Map<String, dynamic>> activeGroupPayments = [];
+  bool loadingPayments = false;
 
   StreamSubscription<String>? _syncSubscription;
+  DateTime _lastMutationTime = DateTime(2000);
 
   FamilyController({
     required this.userName,
@@ -24,9 +27,13 @@ class FamilyController extends ChangeNotifier {
     loadFamilyData();
 
     // Listen to background synchronizations to update family data silently
+    // Debounce: skip if this controller just triggered a mutation < 3s ago
     _syncSubscription = MongoDbService.syncStream.listen((email) {
       if (email == userEmail) {
-        loadFamilyData(silent: true);
+        final elapsed = DateTime.now().difference(_lastMutationTime);
+        if (elapsed.inSeconds >= 3) {
+          loadFamilyData(silent: true);
+        }
       }
     });
   }
@@ -152,6 +159,49 @@ class FamilyController extends ChangeNotifier {
         }
       }
       notifyListeners();
+    }
+    return res;
+  }
+
+  Future<void> loadPayments(String groupId, String billingPeriod) async {
+    loadingPayments = true;
+    notifyListeners();
+
+    activeGroupPayments = await MongoDbService().getPaymentsForGroup(groupId, billingPeriod);
+
+    loadingPayments = false;
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> recordPayment({
+    required String groupId,
+    required String recipientEmail,
+    required double amount,
+    required String upiId,
+    required String status,
+    required String billingPeriod,
+  }) async {
+    final res = await MongoDbService().createPaymentRecord({
+      'groupId': groupId,
+      'senderEmail': userEmail,
+      'recipientEmail': recipientEmail,
+      'amount': amount,
+      'upiId': upiId,
+      'status': status,
+      'billingPeriod': billingPeriod,
+    });
+
+    if (res['success'] == true) {
+      await loadPayments(groupId, billingPeriod);
+    }
+    return res;
+  }
+
+  Future<Map<String, dynamic>> verifyPayment(String paymentId, String status, String groupId, String billingPeriod) async {
+    final res = await MongoDbService().updatePaymentStatus(paymentId, status, userEmail);
+
+    if (res['success'] == true) {
+      await loadPayments(groupId, billingPeriod);
     }
     return res;
   }

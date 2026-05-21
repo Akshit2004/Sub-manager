@@ -215,18 +215,6 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
           backgroundColor: const Color(0xFFF8F6F1),
           body: _buildBody(context),
           bottomNavigationBar: _fade(0.40, 0.80, child: _buildBottomNav()),
-          floatingActionButton: _fade(
-            0.35,
-            0.75,
-            child: FloatingActionButton(
-              onPressed: _showAddSubscriptionSheet,
-              backgroundColor: const Color(0xFFD4593A),
-              foregroundColor: Colors.white,
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.add_rounded, size: 24),
-            ),
-          ),
         );
       },
     );
@@ -240,6 +228,40 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       (Icons.people_alt_rounded, Icons.people_outline, 'Family'),
     ];
 
+    Widget buildNavItem(int i) {
+      final active = _navIndex == i;
+      return GestureDetector(
+        onTap: () {
+          setState(() => _navIndex = i);
+          _controller.loadSubscriptions();
+        },
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 64,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                active ? items[i].$1 : items[i].$2,
+                color: active ? const Color(0xFFD4593A) : const Color(0xFF6B6B80),
+                size: 22,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                items[i].$3,
+                style: TextStyle(
+                  color: active ? const Color(0xFFD4593A) : const Color(0xFF6B6B80),
+                  fontSize: 11,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFFF8F6F1),
@@ -249,41 +271,53 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
         top: false,
         child: SizedBox(
           height: 64,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(items.length, (i) {
-              final active = _navIndex == i;
-              return GestureDetector(
-                onTap: () {
-                  setState(() => _navIndex = i);
-                  _controller.loadSubscriptions();
-                },
-                behavior: HitTestBehavior.opaque,
-                child: SizedBox(
-                  width: 72,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        active ? items[i].$1 : items[i].$2,
-                        color: active ? const Color(0xFFD4593A) : const Color(0xFF6B6B80),
-                        size: 22,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        items[i].$3,
-                        style: TextStyle(
-                          color: active ? const Color(0xFFD4593A) : const Color(0xFF6B6B80),
-                          fontSize: 11,
-                          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                          letterSpacing: 0.3,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Nav items row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  buildNavItem(0),
+                  buildNavItem(1),
+                  const SizedBox(width: 64), // Spacer for center FAB
+                  buildNavItem(2),
+                  buildNavItem(3),
+                ],
+              ),
+              // Centered circular plus button
+              Positioned(
+                top: -22,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFD4593A).withOpacity(0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
+                      ],
+                    ),
+                    child: GestureDetector(
+                      onTap: _showAddSubscriptionSheet,
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFFD4593A),
+                        ),
+                        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              );
-            }),
+              ),
+            ],
           ),
         ),
       ),

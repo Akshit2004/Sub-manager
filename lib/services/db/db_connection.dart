@@ -69,7 +69,7 @@ class DbConnectionService {
 
       _db = await mongo.Db.create(activeUri);
       await _db!.open().timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 10),
         onTimeout: () {
           throw TimeoutException(
             'Connection timed out. Ensure MongoDB is running on $activeUri.',
@@ -117,9 +117,29 @@ class DbConnectionService {
   /// Verify DB Master connectivity and auto-reconnect if dropped
   Future<bool> ensureConnected() async {
     if (kIsWeb) return true;
+
+    // Fast path: connection is alive and healthy
     if (_db != null && _isConnected && _db!.state == mongo.State.OPEN) {
-      return true;
+      try {
+        // Ping to verify the socket is actually alive (not just state flag)
+        await _db!.serverStatus();
+        return true;
+      } catch (_) {
+        // Socket is dead despite OPEN state — fall through to reconnect
+        debugPrint('MongoDB socket dead despite OPEN state. Reconnecting...');
+      }
     }
+
+    // Close any stale/zombie connection before reconnecting
+    try {
+      if (_db != null) {
+        await _db!.close();
+      }
+    } catch (_) {
+      // Ignore close errors on a dead connection
+    }
+    _db = null;
+    _isConnected = false;
 
     debugPrint('Database not active (No Master Connection). Attempting auto-reconnection...');
     final uri = dotenv.env['MONGO_URI'];
@@ -127,11 +147,20 @@ class DbConnectionService {
     final port = int.tryParse(dotenv.env['MONGO_PORT'] ?? '27017') ?? 27017;
     final dbName = dotenv.env['MONGO_DB_NAME'] ?? 'sub_manager';
 
-    return await connect(
-      host: host,
-      port: port,
-      dbName: dbName,
-      connectionString: uri,
-    );
+    // Attempt reconnection with one retry
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      final success = await connect(
+        host: host,
+        port: port,
+        dbName: dbName,
+        connectionString: uri,
+      );
+      if (success) return true;
+      if (attempt < 2) {
+        debugPrint('Reconnection attempt $attempt failed. Retrying in 1s...');
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+    return false;
   }
 }
