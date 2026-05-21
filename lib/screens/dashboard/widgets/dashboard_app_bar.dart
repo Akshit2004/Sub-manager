@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../dashboard_controller.dart';
 import '../../landing_page.dart';
-import '../../../services/notification_service.dart';
 
 class DashboardAppBar extends StatelessWidget {
   final DashboardController controller;

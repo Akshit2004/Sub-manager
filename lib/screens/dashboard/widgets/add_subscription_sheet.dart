@@ -329,7 +329,7 @@ class _AddSubSheetState extends State<AddSubSheet> {
                             _shareWithFamily = val;
                           });
                         },
-                        activeColor: const Color(0xFFD4593A),
+                        activeThumbColor: const Color(0xFFD4593A),
                         contentPadding: EdgeInsets.zero,
                         secondary: const Icon(Icons.people_alt_rounded, color: Color(0xFFD4593A)),
                         title: const Text(
@@ -351,7 +351,7 @@ class _AddSubSheetState extends State<AddSubSheet> {
                       if (_shareWithFamily && _userGroups.length > 1) ...[
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: _selectedGroupId,
+                          initialValue: _selectedGroupId,
                           items: _userGroups.map((g) {
                             return DropdownMenuItem<String>(
                               value: g['id'],

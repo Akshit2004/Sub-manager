@@ -205,7 +205,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
                         shrinkWrap: true,
                         physics: const BouncingScrollPhysics(),
                         itemCount: candidates.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final sub = candidates[index];
                           final name = sub['name'] ?? 'Subscription';
@@ -810,7 +810,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
                                 const SizedBox(height: 2),
                                 Text(
                                   lowestSub != null
-                                      ? '${baseSymbol}${CurrencyUtils.convert((lowestSub['price'] as num?)?.toDouble() ?? 0.0, lowestSub['currency'] ?? 'USD', _controller.baseCurrency).toStringAsFixed(2)}/mo'
+                                      ? '$baseSymbol${CurrencyUtils.convert((lowestSub['price'] as num?)?.toDouble() ?? 0.0, lowestSub['currency'] ?? 'USD', _controller.baseCurrency).toStringAsFixed(2)}/mo'
                                       : '${baseSymbol}0.00/mo',
                                   style: const TextStyle(
                                     color: Color(0xFF3395FF),
@@ -882,7 +882,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with TickerProviderStateM
                                 const SizedBox(height: 2),
                                 Text(
                                   highestSub != null
-                                      ? '${baseSymbol}${CurrencyUtils.convert((highestSub['price'] as num?)?.toDouble() ?? 0.0, highestSub['currency'] ?? 'USD', _controller.baseCurrency).toStringAsFixed(2)}/mo'
+                                      ? '$baseSymbol${CurrencyUtils.convert((highestSub['price'] as num?)?.toDouble() ?? 0.0, highestSub['currency'] ?? 'USD', _controller.baseCurrency).toStringAsFixed(2)}/mo'
                                       : '${baseSymbol}0.00/mo',
                                   style: const TextStyle(
                                     color: Color(0xFFD4593A),

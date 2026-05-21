@@ -296,7 +296,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFD4593A).withOpacity(0.35),
+                          color: const Color(0xFFD4593A).withValues(alpha: 0.35),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),

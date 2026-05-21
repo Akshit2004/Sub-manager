@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mongo_dart/mongo_dart.dart' as mongo;
-import 'package:shared_preferences/shared_preferences.dart';
 
 class DbConnectionService {
   static final DbConnectionService _instance = DbConnectionService._internal();
@@ -119,7 +118,7 @@ class DbConnectionService {
     if (kIsWeb) return true;
 
     // Fast path: connection is alive and healthy
-    if (_db != null && _isConnected && _db!.state == mongo.State.OPEN) {
+    if (_db != null && _isConnected && _db!.state == mongo.State.open) {
       try {
         // Ping to verify the socket is actually alive (not just state flag)
         await _db!.serverStatus();

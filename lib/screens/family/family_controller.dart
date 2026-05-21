@@ -15,9 +15,8 @@ class FamilyController extends ChangeNotifier {
   bool submitting = false;
   List<Map<String, dynamic>> activeGroupPayments = [];
   bool loadingPayments = false;
-
   StreamSubscription<String>? _syncSubscription;
-  DateTime _lastMutationTime = DateTime(2000);
+  final DateTime _lastMutationTime = DateTime(2000);
 
   FamilyController({
     required this.userName,
