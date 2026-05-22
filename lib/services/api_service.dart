@@ -11,7 +11,7 @@ class ApiService {
   /// Resolve API Base URL automatically based on build and platform
   String get baseUrl {
     if (kReleaseMode) {
-      // Hosted production URL
+      // Hosted production URL (dynamically corrected at runtime to bypass unpatchable .env assets)
       final url = dotenv.env['API_PRODUCTION_URL']?.trim() ?? 'https://submanageradmin.vercel.app';
       if (url.contains('submanager-admin.vercel.app')) {
         return 'https://submanageradmin.vercel.app';
