@@ -1,0 +1,43 @@
+name: Shorebird Auto-Patch (OTA Update)
+
+on:
+  push:
+    branches:
+      - main # Triggers whenever you push or merge into the main branch
+    paths:
+      - 'App/lib/**'
+      - 'App/assets/**'
+      - 'App/pubspec.yaml'
+
+jobs:
+  deploy-patch:
+    name: Build & Deploy OTA Patch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java SDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Shorebird CLI
+        uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+
+      - name: Deploy Over-The-Air Patch
+        # --force accepts any warning prompts automatically in non-interactive CI mode
+        run: shorebird patch android --force
+        working-directory: ./App
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
