@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../services/shorebird_updater.dart';
 
 import 'dashboard_controller.dart';
 import 'widgets/dashboard_app_bar.dart';
@@ -25,6 +27,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
   late final AnimationController _entrance;
   late final DashboardController _controller;
   int _navIndex = 0;
+  bool _showUpdateBanner = false;
 
   @override
   void initState() {
@@ -47,7 +50,24 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService().requestPermissions();
+      _checkForUpdates();
     });
+  }
+
+  void _checkForUpdates() async {
+    try {
+      final updater = SubManagerShorebirdService();
+      if (updater.isShorebirdAvailable()) {
+        final hasUpdate = await updater.checkForUpdates();
+        if (hasUpdate && mounted) {
+          setState(() {
+            _showUpdateBanner = true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error running Shorebird update check: $e');
+    }
   }
 
   void _onStateChange() {
@@ -213,10 +233,122 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       builder: (context, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF8F6F1),
-          body: _buildBody(context),
+          body: Stack(
+            children: [
+              _buildBody(context),
+              if (_showUpdateBanner)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 12,
+                  left: 16,
+                  right: 16,
+                  child: _buildUpdateBanner(),
+                ),
+            ],
+          ),
           bottomNavigationBar: _fade(0.40, 0.80, child: _buildBottomNav()),
         );
       },
+    );
+  }
+
+  Widget _buildUpdateBanner() {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFD4593A).withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1A1A2E).withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4593A).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.system_update_alt_rounded,
+                color: Color(0xFFD4593A),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    'App Update Ready',
+                    style: TextStyle(
+                      color: Color(0xFF1A1A2E),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Restart the app to apply the latest updates.',
+                    style: TextStyle(
+                      color: Color(0xFF6B6B80),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFD4593A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () {
+                // Instantly exits the app so the downloaded hot patch gets applied
+                SystemNavigator.pop();
+              },
+              child: const Text(
+                'Restart',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: Color(0xFF6B6B80),
+              ),
+              onPressed: () {
+                setState(() {
+                  _showUpdateBanner = false;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
