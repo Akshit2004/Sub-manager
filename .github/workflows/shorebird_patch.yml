@@ -5,9 +5,9 @@ on:
     branches:
       - main # Triggers whenever you push or merge into the main branch
     paths:
-      - 'App/lib/**'
-      - 'App/assets/**'
-      - 'App/pubspec.yaml'
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
 
 jobs:
   deploy-patch:
@@ -38,6 +38,5 @@ jobs:
       - name: Deploy Over-The-Air Patch
         # --force accepts any warning prompts automatically in non-interactive CI mode
         run: shorebird patch android --force
-        working-directory: ./App
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
