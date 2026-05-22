@@ -8,7 +8,6 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  /// Resolve API Base URL automatically based on build and platform
   String get baseUrl {
     if (kReleaseMode) {
       // Hosted production URL (dynamically corrected at runtime to bypass unpatchable .env assets)
