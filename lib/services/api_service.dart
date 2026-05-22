@@ -12,7 +12,7 @@ class ApiService {
   String get baseUrl {
     if (kReleaseMode) {
       // Hosted production URL
-      return dotenv.env['API_PRODUCTION_URL']?.trim() ?? 'https://submanager-admin.vercel.app';
+      return dotenv.env['API_PRODUCTION_URL']?.trim() ?? 'https://submanageradmin.vercel.app';
     }
 
     // Local development URL
