@@ -36,7 +36,7 @@ jobs:
           cache: true
 
       - name: Deploy Over-The-Air Patch
-        # --force accepts any warning prompts automatically in non-interactive CI mode
-        run: shorebird patch android --force
+        # --allow-asset-diffs bypasses the asset warning in non-interactive CI mode
+        run: shorebird patch android --allow-asset-diffs
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
