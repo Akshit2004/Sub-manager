@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../mongodb_service.dart';
 import 'db_connection.dart';
+import '../api_service.dart';
 
 class DbPaymentsService {
-  final DbConnectionService _connection;
-  DbPaymentsService(this._connection);
+  DbPaymentsService(DbConnectionService connection);
 
   /// Helper to convert custom MongoDB values (like ObjectId and DateTime) into JSON-safe types
   Map<String, dynamic> _serializeMongoMap(Map<String, dynamic> document) {
@@ -15,8 +14,6 @@ class DbPaymentsService {
     copy.forEach((key, value) {
       if (value is DateTime) {
         copy[key] = value.toIso8601String();
-      } else if (value is mongo.ObjectId) {
-        copy[key] = value.oid;
       } else if (value is Map) {
         copy[key] = _serializeMongoMap(Map<String, dynamic>.from(value));
       }
@@ -53,19 +50,13 @@ class DbPaymentsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) {
-        return {'success': false, 'message': 'Database not connected'};
+      final res = await ApiService().createPaymentRecord(payment);
+      if (res['success'] == true) {
+        // Trigger a silent sync notify for both sender and recipient
+        MongoDbService.notifySync(payment['senderEmail'] as String);
+        MongoDbService.notifySync(payment['recipientEmail'] as String);
       }
-
-      final coll = _connection.db!.collection('payments');
-      await coll.insertOne(payment);
-
-      // Trigger a silent sync notify for both sender and recipient
-      MongoDbService.notifySync(payment['senderEmail'] as String);
-      MongoDbService.notifySync(payment['recipientEmail'] as String);
-
-      return {'success': true, 'message': 'Payment declared successfully', 'payment': payment};
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Create payment record failed: $e'};
     }
@@ -93,13 +84,7 @@ class DbPaymentsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return [];
-      final coll = _connection.db!.collection('payments');
-      final list = await coll.find(mongo.where
-          .eq('groupId', groupId)
-          .eq('billingPeriod', billingPeriod)).toList();
-
+      final list = await ApiService().getPaymentsForGroup(groupId, billingPeriod);
       return list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
       debugPrint('Native getPaymentsForGroup failed: $e');
@@ -143,33 +128,16 @@ class DbPaymentsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) {
-        return {'success': false, 'message': 'Database not connected'};
+      final res = await ApiService().updatePaymentStatus(paymentId, status, userEmail);
+      if (res['success'] == true && res['payment'] != null) {
+        final payment = Map<String, dynamic>.from(res['payment']);
+        // Trigger sync notification for both sender and receiver to redraw dashboards
+        final sender = payment['senderEmail'] as String;
+        final receiver = payment['recipientEmail'] as String;
+        MongoDbService.notifySync(sender);
+        MongoDbService.notifySync(receiver);
       }
-
-      final coll = _connection.db!.collection('payments');
-      final payment = await coll.findOne(mongo.where.eq('id', paymentId));
-      if (payment == null) {
-        return {'success': false, 'message': 'Payment record not found'};
-      }
-
-      await coll.updateOne(
-        mongo.where.eq('id', paymentId),
-        mongo.modify.set('status', status),
-      );
-
-      // Trigger sync notification for both sender and receiver to redraw dashboards
-      final sender = payment['senderEmail'] as String;
-      final receiver = payment['recipientEmail'] as String;
-      MongoDbService.notifySync(sender);
-      MongoDbService.notifySync(receiver);
-
-      return {
-        'success': true,
-        'message': 'Payment status updated to $status successfully',
-        'payment': _serializeMongoMap(payment)
-      };
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Update payment status failed: $e'};
     }

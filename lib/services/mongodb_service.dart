@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'db/db_connection.dart';
 import 'db/db_auth.dart';
 import 'db/db_subscriptions.dart';
@@ -59,7 +58,7 @@ class MongoDbService {
   late final _payments = DbPaymentsService(_conn);
 
   // Connection Parameters & Getters
-  mongo.Db? get db => _conn.db;
+  dynamic get db => _conn.db;
   bool get isConnected => _conn.isConnected;
   String get currentUri => _conn.currentUri;
   String? get errorMessage => _conn.errorMessage;
@@ -81,7 +80,7 @@ class MongoDbService {
   Future<void> close() => _conn.close();
 
   /// Retrieve active collection reference
-  mongo.DbCollection? getCollection(String name) => _conn.getCollection(name);
+  dynamic getCollection(String name) => _conn.getCollection(name);
 
   // ── Authentication Service Delegation ───────────────────
 

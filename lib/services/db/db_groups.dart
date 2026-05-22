@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../mongodb_service.dart';
 import 'db_connection.dart';
+import '../api_service.dart';
 
 class DbGroupsService {
-  final DbConnectionService _connection;
-  DbGroupsService(this._connection);
+  DbGroupsService(DbConnectionService connection);
 
   /// Helper to convert custom MongoDB values (like ObjectId and DateTime) into JSON-safe types
   Map<String, dynamic> _serializeMongoMap(Map<String, dynamic> document) {
@@ -15,8 +14,6 @@ class DbGroupsService {
     copy.forEach((key, value) {
       if (value is DateTime) {
         copy[key] = value.toIso8601String();
-      } else if (value is mongo.ObjectId) {
-        copy[key] = value.oid;
       } else if (value is Map) {
         copy[key] = _serializeMongoMap(Map<String, dynamic>.from(value));
       }
@@ -62,14 +59,11 @@ class DbGroupsService {
     return await _fetchAndCacheGroups(cleanEmail);
   }
 
-  /// Sync groups state with remote MongoDB
+  /// Sync groups state with remote MongoDB via REST API
   Future<List<Map<String, dynamic>>> _fetchAndCacheGroups(String email) async {
     final cleanEmail = email.toLowerCase().trim();
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return [];
-      final coll = _connection.db!.collection('groups');
-      final list = await coll.find(mongo.where.match('members', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
+      final list = await ApiService().getUserGroups(cleanEmail);
       
       final prefs = await SharedPreferences.getInstance();
       if (list.isNotEmpty) {
@@ -121,10 +115,7 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return [];
-      final coll = _connection.db!.collection('groups');
-      final list = await coll.find(mongo.where.match('pendingInvites', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
+      final list = await ApiService().getInvitesForUser(cleanEmail);
       final serializedList = list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
       return serializedList;
     } catch (e) {
@@ -161,21 +152,15 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) {
-        return {'success': false, 'message': 'Database not connected'};
+      final res = await ApiService().createGroup(name.trim(), cleanEmail);
+      if (res['success'] == true) {
+        // Invalidate group cache immediately
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
       }
-
-      final coll = _connection.db!.collection('groups');
-      await coll.insertOne(group);
-      
-      // Invalidate group cache immediately
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-      
-      return {'success': true, 'message': 'Family Group created successfully', 'group': group};
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Create Group failed: $e'};
     }
@@ -227,37 +212,15 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
-      final coll = _connection.db!.collection('groups');
-      final group = await coll.findOne(mongo.where.eq('id', groupId));
-      if (group == null) {
-        return {'success': false, 'message': 'Group not found'};
+      final res = await ApiService().inviteMember(groupId, cleanEmail);
+      if (res['success'] == true) {
+        // Invalidate cache
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
       }
-
-      final members = List<String>.from(group['members'] ?? []);
-      final pending = List<String>.from(group['pendingInvites'] ?? []);
-
-      if (members.any((m) => m.toLowerCase().trim() == cleanEmail)) {
-        return {'success': false, 'message': 'User is already a member of this group'};
-      }
-
-      if (pending.any((p) => p.toLowerCase().trim() == cleanEmail)) {
-        return {'success': false, 'message': 'User already has a pending invite'};
-      }
-
-      await coll.updateOne(
-        mongo.where.eq('id', groupId),
-        mongo.modify.push('pendingInvites', cleanEmail),
-      );
-      
-      // Invalidate cache
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-      
-      return {'success': true, 'message': 'Invite sent successfully'};
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Invite failed: $e'};
     }
@@ -306,37 +269,15 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
-      final coll = _connection.db!.collection('groups');
-      
-      // Dynamically resolve the exact stored invite casing to prevent zombie invites
-      final group = await coll.findOne(mongo.where.eq('id', groupId));
-      String inviteToRemove = cleanEmail;
-      if (group != null) {
-        final pending = List<String>.from(group['pendingInvites'] ?? []);
-        inviteToRemove = pending.firstWhere(
-          (p) => p.toLowerCase().trim() == cleanEmail,
-          orElse: () => cleanEmail,
-        );
+      final res = await ApiService().acceptInvite(groupId, cleanEmail);
+      if (res['success'] == true) {
+        // Invalidate cache immediately
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
       }
-
-      await coll.updateOne(
-        mongo.where.eq('id', groupId),
-        mongo.modify.pull('pendingInvites', inviteToRemove),
-      );
-      await coll.updateOne(
-        mongo.where.eq('id', groupId),
-        mongo.modify.push('members', cleanEmail),
-      );
-
-      // Invalidate cache immediately
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-      
-      return {'success': true, 'message': 'Joined Family Group successfully!'};
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Accept invite failed: $e'};
     }
@@ -379,33 +320,15 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
-      final coll = _connection.db!.collection('groups');
-
-      // Dynamically resolve the exact stored invite casing to prevent zombie invites
-      final group = await coll.findOne(mongo.where.eq('id', groupId));
-      String inviteToRemove = cleanEmail;
-      if (group != null) {
-        final pending = List<String>.from(group['pendingInvites'] ?? []);
-        inviteToRemove = pending.firstWhere(
-          (p) => p.toLowerCase().trim() == cleanEmail,
-          orElse: () => cleanEmail,
-        );
+      final res = await ApiService().declineInvite(groupId, cleanEmail);
+      if (res['success'] == true) {
+        // Invalidate cache
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
       }
-
-      await coll.updateOne(
-        mongo.where.eq('id', groupId),
-        mongo.modify.pull('pendingInvites', inviteToRemove),
-      );
-      
-      // Invalidate cache
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-      
-      return {'success': true, 'message': 'Invite declined'};
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Decline invite failed: $e'};
     }
@@ -454,40 +377,15 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
-      final coll = _connection.db!.collection('groups');
-      final group = await coll.findOne(mongo.where.eq('id', groupId));
-      if (group == null) {
-        return {'success': false, 'message': 'Group not found'};
+      final res = await ApiService().leaveGroup(groupId, cleanEmail);
+      if (res['success'] == true) {
+        // Invalidate cache immediately on departure/disband
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
       }
-
-      if (group['ownerEmail']?.toString().toLowerCase().trim() == cleanEmail) {
-        await coll.remove(mongo.where.eq('id', groupId));
-      } else {
-        final members = List<String>.from(group['members'] ?? []);
-        final memberToRemove = members.firstWhere(
-          (m) => m.toLowerCase().trim() == cleanEmail,
-          orElse: () => cleanEmail,
-        );
-        await coll.updateOne(
-          mongo.where.eq('id', groupId),
-          mongo.modify.pull('members', memberToRemove),
-        );
-      }
-      
-      // Invalidate cache immediately on departure/disband
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-      
-      return {
-        'success': true,
-        'message': group['ownerEmail']?.toString().toLowerCase().trim() == cleanEmail 
-            ? 'Family Group disbanded successfully' 
-            : 'Left Family Group successfully'
-      };
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Leave group failed: $e'};
     }
@@ -522,20 +420,14 @@ class DbGroupsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return {'success': false, 'message': 'Database not connected'};
-      final coll = _connection.db!.collection('groups');
-      await coll.updateOne(
-        mongo.where.eq('id', groupId),
-        mongo.modify.set('upiId', upiId.trim()),
-      );
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_group_fetch_$cleanEmail');
-      await prefs.remove('local_groups_$cleanEmail');
-      _triggerBackgroundGroupSync(cleanEmail);
-
-      return {'success': true, 'message': 'UPI ID updated successfully'};
+      final res = await ApiService().updateGroupUpiId(groupId, upiId, cleanEmail);
+      if (res['success'] == true) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_group_fetch_$cleanEmail');
+        await prefs.remove('local_groups_$cleanEmail');
+        _triggerBackgroundGroupSync(cleanEmail);
+      }
+      return res;
     } catch (e) {
       return {'success': false, 'message': 'Update UPI ID failed: $e'};
     }

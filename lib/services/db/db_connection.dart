@@ -1,165 +1,34 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 
 class DbConnectionService {
   static final DbConnectionService _instance = DbConnectionService._internal();
   factory DbConnectionService() => _instance;
   DbConnectionService._internal();
 
-  mongo.Db? _db;
-  bool _isConnected = false;
-  String _currentUri = '';
-  String? _errorMessage;
+  dynamic get db => null;
+  bool get isConnected => true;
+  String get currentUri => 'api_proxy::nextjs_server';
+  String? get errorMessage => null;
 
-  mongo.Db? get db => _db;
-  bool get isConnected => _isConnected;
-  String get currentUri => _currentUri;
-  String? get errorMessage => _errorMessage;
-
-  /// Connect to the database
+  /// Connect stub (Always true)
   Future<bool> connect({
     String host = '127.0.0.1',
     int port = 27017,
     String dbName = 'sub_manager',
     String? connectionString,
   }) async {
-    // Web Mode Fallback
-    if (kIsWeb) {
-      _isConnected = true;
-      _currentUri = 'shared_preferences::web_fallback';
-      _errorMessage = null;
-      debugPrint('Web Mode: Local persistence activated successfully (Direct MongoDB TCP blocked by browser sandbox).');
-      return true;
-    }
-
-    // Native Mode
-    String activeUri = connectionString ?? '';
-    if (activeUri.isEmpty) {
-      String actualHost = host;
-      if (host == 'localhost' || host == '127.0.0.1') {
-        if (defaultTargetPlatform == TargetPlatform.android) {
-          actualHost = '10.0.2.2';
-        }
-      }
-      activeUri = 'mongodb://$actualHost:$port/$dbName';
-    } else {
-      if (activeUri.endsWith('/')) {
-        activeUri = '$activeUri$dbName';
-      } else {
-        final schemaIndex = activeUri.indexOf('://');
-        if (schemaIndex != -1) {
-          final hostPortPart = activeUri.substring(schemaIndex + 3);
-          if (!hostPortPart.contains('/')) {
-            activeUri = '$activeUri/$dbName';
-          }
-        }
-      }
-    }
-
-    _currentUri = activeUri;
-    _errorMessage = null;
-
-    try {
-      if (_db != null) {
-        await close();
-      }
-
-      _db = await mongo.Db.create(activeUri);
-      await _db!.open().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException(
-            'Connection timed out. Ensure MongoDB is running on $activeUri.',
-          );
-        },
-      );
-
-      _isConnected = true;
-      _errorMessage = null;
-      debugPrint('Successfully connected to MongoDB at $connectionString');
-      return true;
-    } catch (e) {
-      _isConnected = false;
-      _errorMessage = e.toString();
-      debugPrint('Error connecting to MongoDB: $e');
-      return false;
-    }
+    return true;
   }
 
-  /// Close the connection
-  Future<void> close() async {
-    if (kIsWeb) {
-      _isConnected = false;
-      return;
-    }
+  /// Close stub
+  Future<void> close() async {}
 
-    try {
-      if (_db != null) {
-        await _db!.close();
-        _db = null;
-      }
-    } catch (e) {
-      debugPrint('Error closing MongoDB connection: $e');
-    } finally {
-      _isConnected = false;
-    }
-  }
+  /// Collection stub
+  dynamic getCollection(String name) => null;
 
-  /// Direct collection builder helper
-  mongo.DbCollection? getCollection(String name) {
-    if (kIsWeb || !_isConnected || _db == null) return null;
-    return _db!.collection(name);
-  }
-
-  /// Verify DB Master connectivity and auto-reconnect if dropped
+  /// Connection health check stub (Always true)
   Future<bool> ensureConnected() async {
-    if (kIsWeb) return true;
-
-    // Fast path: connection is alive and healthy
-    if (_db != null && _isConnected && _db!.state == mongo.State.open) {
-      try {
-        // Ping to verify the socket is actually alive (not just state flag)
-        await _db!.serverStatus();
-        return true;
-      } catch (_) {
-        // Socket is dead despite OPEN state — fall through to reconnect
-        debugPrint('MongoDB socket dead despite OPEN state. Reconnecting...');
-      }
-    }
-
-    // Close any stale/zombie connection before reconnecting
-    try {
-      if (_db != null) {
-        await _db!.close();
-      }
-    } catch (_) {
-      // Ignore close errors on a dead connection
-    }
-    _db = null;
-    _isConnected = false;
-
-    debugPrint('Database not active (No Master Connection). Attempting auto-reconnection...');
-    final uri = dotenv.env['MONGO_URI'];
-    final host = dotenv.env['MONGO_HOST'] ?? '127.0.0.1';
-    final port = int.tryParse(dotenv.env['MONGO_PORT'] ?? '27017') ?? 27017;
-    final dbName = dotenv.env['MONGO_DB_NAME'] ?? 'sub_manager';
-
-    // Attempt reconnection with one retry
-    for (int attempt = 1; attempt <= 2; attempt++) {
-      final success = await connect(
-        host: host,
-        port: port,
-        dbName: dbName,
-        connectionString: uri,
-      );
-      if (success) return true;
-      if (attempt < 2) {
-        debugPrint('Reconnection attempt $attempt failed. Retrying in 1s...');
-        await Future.delayed(const Duration(seconds: 1));
-      }
-    }
-    return false;
+    return true;
   }
 }
+

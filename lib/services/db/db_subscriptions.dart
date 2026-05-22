@@ -1,56 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../mongodb_service.dart';
 import 'db_connection.dart';
 import '../notification_service.dart';
+import '../api_service.dart';
 
 class DbSubscriptionsService {
-  final DbConnectionService _connection;
-  DbSubscriptionsService(this._connection);
-
-  /// Helper to convert custom MongoDB values (like ObjectId and DateTime) into JSON-safe types
-  Map<String, dynamic> _serializeMongoMap(Map<String, dynamic> document) {
-    final copy = Map<String, dynamic>.from(document);
-    copy.forEach((key, value) {
-      if (value is DateTime) {
-        copy[key] = value.toIso8601String();
-      } else if (value is mongo.ObjectId) {
-        copy[key] = value.oid;
-      } else if (value is Map) {
-        copy[key] = _serializeMongoMap(Map<String, dynamic>.from(value));
-      }
-    });
-    return copy;
-  }
-
-  /// Internal utility to find user group IDs without circular dependencies
-  Future<List<String>> _getUserGroupIds(String email) async {
-    final cleanEmail = email.toLowerCase().trim();
-    if (kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
-      final groupsJson = prefs.getString('web_groups') ?? '[]';
-      final groups = List<dynamic>.from(jsonDecode(groupsJson));
-      final groupIds = <String>[];
-      for (var g in groups) {
-        final group = Map<String, dynamic>.from(g);
-        final members = List<String>.from(group['members'] ?? []);
-        if (members.contains(cleanEmail) || group['ownerEmail'] == cleanEmail) {
-          if (group['id'] != null) {
-            groupIds.add(group['id'].toString());
-          }
-        }
-      }
-      return groupIds;
-    }
-
-    await _connection.ensureConnected();
-    if (!_connection.isConnected || _connection.db == null) return [];
-    final coll = _connection.db!.collection('groups');
-    final groups = await coll.find(mongo.where.match('members', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true)).toList();
-    return groups.map((g) => g['id']?.toString()).whereType<String>().toList();
-  }
+  DbSubscriptionsService(DbConnectionService connection);
 
   /// Unified retrieval: reads from local cache first, then syncs in background if stale (> 5 min)
   Future<List<Map<String, dynamic>>> getSubscriptions(String email) async {
@@ -93,25 +50,12 @@ class DbSubscriptionsService {
     return await _fetchAndCache(cleanEmail);
   }
 
-  /// Fetch from remote MongoDB and overwrite local cache with standard serialized formats
+  /// Fetch from remote REST API and overwrite local cache with standard serialized formats
   Future<List<Map<String, dynamic>>> _fetchAndCache(String email) async {
     final cleanEmail = email.toLowerCase().trim();
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return [];
-      
-      final groupIds = await _getUserGroupIds(cleanEmail);
-
-      final coll = _connection.db!.collection('subscriptions');
-      mongo.SelectorBuilder selector;
-      if (groupIds.isNotEmpty) {
-        selector = mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).or(mongo.where.oneFrom('groupId', groupIds));
-      } else {
-        selector = mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true);
-      }
-      
-      final list = await coll.find(selector).toList();
-      final freshList = list.map((e) => _serializeMongoMap(Map<String, dynamic>.from(e))).toList();
+      // Call Next.js API
+      final freshList = await ApiService().getSubscriptions(cleanEmail);
       
       // Save safely to local cache
       final prefs = await SharedPreferences.getInstance();
@@ -164,20 +108,19 @@ class DbSubscriptionsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return false;
-      final coll = _connection.db!.collection('subscriptions');
-      await coll.insertOne(item);
-      
-      // Schedule reminders immediately
-      NotificationService().scheduleSubscriptionReminders(item);
-      
-      // Invalidate cache immediately on mutation
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_fetch_$cleanEmail');
-      _triggerBackgroundSync(cleanEmail);
-      
-      return true;
+      // Call Next.js API
+      final success = await ApiService().addSubscription(cleanEmail, item);
+      if (success) {
+        // Schedule reminders immediately
+        NotificationService().scheduleSubscriptionReminders(item);
+        
+        // Invalidate cache immediately on mutation
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_fetch_$cleanEmail');
+        _triggerBackgroundSync(cleanEmail);
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('Native addSubscription failed: $e');
       return false;
@@ -208,34 +151,15 @@ class DbSubscriptionsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return false;
-      final coll = _connection.db!.collection('subscriptions');
-      
-      try {
-        final objId = mongo.ObjectId.fromHexString(id);
-        final res = await coll.updateOne(
-          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
-          mongo.modify.set('notes', notes),
-        );
-        if (res.isSuccess) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('last_fetch_$cleanEmail');
-          _triggerBackgroundSync(cleanEmail);
-          return true;
-        }
-      } catch (_) {}
-
-      await coll.updateOne(
-        mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
-        mongo.modify.set('notes', notes),
-      );
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_fetch_$cleanEmail');
-      _triggerBackgroundSync(cleanEmail);
-      
-      return true;
+      // Call Next.js API
+      final success = await ApiService().updateSubscriptionNotes(cleanEmail, id, notes);
+      if (success) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_fetch_$cleanEmail');
+        _triggerBackgroundSync(cleanEmail);
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('Native updateSubscriptionNotes failed: $e');
       return false;
@@ -266,34 +190,15 @@ class DbSubscriptionsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return false;
-      final coll = _connection.db!.collection('subscriptions');
-      
-      try {
-        final objId = mongo.ObjectId.fromHexString(id);
-        await coll.updateOne(
-          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
-          groupId == null ? mongo.modify.unset('groupId') : mongo.modify.set('groupId', groupId),
-        );
-        
+      // Call Next.js API
+      final success = await ApiService().updateSubscriptionGroup(cleanEmail, id, groupId);
+      if (success) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('last_fetch_$cleanEmail');
         _triggerBackgroundSync(cleanEmail);
-        
         return true;
-      } catch (_) {}
-
-      await coll.updateOne(
-        mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
-        groupId == null ? mongo.modify.unset('groupId') : mongo.modify.set('groupId', groupId),
-      );
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_fetch_$cleanEmail');
-      _triggerBackgroundSync(cleanEmail);
-      
-      return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('Native updateSubscriptionGroup failed: $e');
       return false;
@@ -324,31 +229,15 @@ class DbSubscriptionsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return false;
-      final coll = _connection.db!.collection('subscriptions');
-
-      final update = mongo.ModifierBuilder();
-      data.forEach((key, value) { update.set(key, value); });
-
-      try {
-        final objId = mongo.ObjectId.fromHexString(id);
-        await coll.updateOne(
-          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('_id', objId)),
-          update,
-        );
-      } catch (_) {
-        await coll.updateOne(
-          mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.eq('id', id)),
-          update,
-        );
+      // Call Next.js API
+      final success = await ApiService().updateSubscription(cleanEmail, id, data);
+      if (success) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_fetch_$cleanEmail');
+        _triggerBackgroundSync(cleanEmail);
+        return true;
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_fetch_$cleanEmail');
-      _triggerBackgroundSync(cleanEmail);
-
-      return true;
+      return false;
     } catch (e) {
       debugPrint('Native updateSubscription failed: $e');
       return false;
@@ -373,42 +262,25 @@ class DbSubscriptionsService {
     }
 
     try {
-      await _connection.ensureConnected();
-      if (!_connection.isConnected || _connection.db == null) return false;
-      final coll = _connection.db!.collection('subscriptions');
-      
-      final objectIds = <mongo.ObjectId>[];
-      final stringIds = <String>[];
-      
-      for (final id in ids) {
-        try {
-          objectIds.add(mongo.ObjectId.fromHexString(id));
-        } catch (_) {
-          stringIds.add(id);
+      // Call Next.js API
+      final success = await ApiService().deleteSubscriptions(cleanEmail, ids);
+      if (success) {
+        // Cancel pending notifications for deleted IDs
+        for (final id in ids) {
+          NotificationService().cancelSubscriptionReminders(id);
         }
+        
+        // Invalidate cache immediately on mutation
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_fetch_$cleanEmail');
+        _triggerBackgroundSync(cleanEmail);
+        return true;
       }
-
-      if (objectIds.isNotEmpty) {
-        await coll.remove(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.oneFrom('_id', objectIds)));
-      }
-      if (stringIds.isNotEmpty) {
-        await coll.remove(mongo.where.match('email', '^${RegExp.escape(cleanEmail)}\$', caseInsensitive: true).and(mongo.where.oneFrom('id', stringIds)));
-      }
-      
-      // Cancel pending notifications for deleted IDs
-      for (final id in ids) {
-        NotificationService().cancelSubscriptionReminders(id);
-      }
-      
-      // Invalidate cache immediately on mutation
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_fetch_$cleanEmail');
-      _triggerBackgroundSync(cleanEmail);
-      
-      return true;
+      return false;
     } catch (e) {
       debugPrint('Native deleteSubscriptions failed: $e');
       return false;
     }
   }
 }
+
