@@ -2,11 +2,45 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'shorebird_updater.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal();
+  
+  Future<void>? _initFuture;
+
+  ApiService._internal() {
+    // Dynamically load the patch version asynchronously when initialized
+    _initFuture = initVersions();
+  }
+
+  String _appVersion = '1.0.0';
+  int? _patchVersion;
+
+  /// Fetch and cache active App version and Shorebird patch version
+  Future<void> initVersions() async {
+    try {
+      final updater = SubManagerShorebirdService();
+      if (updater.isShorebirdAvailable()) {
+        _patchVersion = await updater.currentPatchNumber();
+        debugPrint('[ApiService] Loaded Shorebird patch version: $_patchVersion');
+      }
+    } catch (e) {
+      debugPrint('[ApiService] Failed to fetch Shorebird version details: $e');
+    }
+  }
+
+  Future<Map<String, String>> _buildHeaders() async {
+    if (_initFuture != null) {
+      await _initFuture;
+    }
+    return {
+      'Content-Type': 'application/json',
+      'x-app-version': _appVersion,
+      'x-patch-version': (_patchVersion ?? 0).toString(),
+    };
+  }
 
   String get baseUrl {
     if (kReleaseMode) {
@@ -33,40 +67,44 @@ class ApiService {
 
   // ── Helper HTTP requests ─────────────────────────────────
 
-  Future<http.Response> _get(String path) {
+  Future<http.Response> _get(String path) async {
     final url = Uri.parse('$baseUrl$path');
     debugPrint('[API GET] $url');
-    return http.get(url, headers: {'Content-Type': 'application/json'}).timeout(
+    final headers = await _buildHeaders();
+    return http.get(url, headers: headers).timeout(
       const Duration(seconds: 15),
     );
   }
 
-  Future<http.Response> _post(String path, Map<String, dynamic> body) {
+  Future<http.Response> _post(String path, Map<String, dynamic> body) async {
     final url = Uri.parse('$baseUrl$path');
     debugPrint('[API POST] $url -> body: ${jsonEncode(body)}');
+    final headers = await _buildHeaders();
     return http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode(body),
     ).timeout(const Duration(seconds: 15));
   }
 
-  Future<http.Response> _put(String path, Map<String, dynamic> body) {
+  Future<http.Response> _put(String path, Map<String, dynamic> body) async {
     final url = Uri.parse('$baseUrl$path');
     debugPrint('[API PUT] $url -> body: ${jsonEncode(body)}');
+    final headers = await _buildHeaders();
     return http.put(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode(body),
     ).timeout(const Duration(seconds: 15));
   }
 
-  Future<http.Response> _delete(String path, Map<String, dynamic> body) {
+  Future<http.Response> _delete(String path, Map<String, dynamic> body) async {
     final url = Uri.parse('$baseUrl$path');
     debugPrint('[API DELETE] $url -> body: ${jsonEncode(body)}');
+    final headers = await _buildHeaders();
     return http.delete(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode(body),
     ).timeout(const Duration(seconds: 15));
   }
