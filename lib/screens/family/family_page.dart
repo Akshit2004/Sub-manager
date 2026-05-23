@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../auth_page.dart';
 import 'family_controller.dart';
 import 'widgets/family_page_indicator.dart';
 import 'widgets/create_group_view.dart';
@@ -136,7 +138,9 @@ class _FamilyPageState extends State<FamilyPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
+    final isGuest = widget.userEmail.toLowerCase().trim() == 'guest';
+
+    Widget pageBody = ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
         if (_controller.loading && _controller.groups.isEmpty) {
@@ -231,5 +235,115 @@ class _FamilyPageState extends State<FamilyPage> {
         );
       },
     );
+
+    if (isGuest) {
+      return Stack(
+        children: [
+          // Blurred background containing dummy family views
+          Opacity(
+            opacity: 0.3,
+            child: AbsorbPointer(
+              child: pageBody,
+            ),
+          ),
+          Positioned.fill(
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                child: Container(
+                  color: const Color(0xFFF8F6F1).withValues(alpha: 0.35),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: Container(
+                        padding: const EdgeInsets.all(28),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE8E4DE)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1A1A2E).withValues(alpha: 0.08),
+                              blurRadius: 28,
+                              offset: const Offset(0, 14),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD4593A).withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.people_outline_rounded,
+                                color: Color(0xFFD4593A),
+                                size: 36,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              'Family Sharing',
+                              style: TextStyle(
+                                color: Color(0xFF1A1A2E),
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.6,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Connect with your family members to pool subscriptions, split bills, and sync payment reminders in real-time.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFF6B6B80),
+                                fontSize: 14,
+                                height: 1.45,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const AuthPage(isLogin: true)),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFD4593A),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Sign in to unlock',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return pageBody;
   }
 }

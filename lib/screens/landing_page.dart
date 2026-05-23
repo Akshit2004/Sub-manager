@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_page.dart';
+import 'dashboard/dashboard_page.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -13,6 +15,7 @@ class _LandingPageState extends State<LandingPage>
     with TickerProviderStateMixin {
   late final AnimationController _entrance;
   late final AnimationController _float;
+  late final List<Widget> _cards;
 
   // ── warm cream + coral palette ────────────────────────────
   static const _bg = Color(0xFFF8F6F1);
@@ -43,6 +46,7 @@ class _LandingPageState extends State<LandingPage>
   @override
   void initState() {
     super.initState();
+    _cards = List.generate(_subs.length, (i) => RepaintBoundary(child: _subCard(i)));
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1600),
@@ -94,18 +98,18 @@ class _LandingPageState extends State<LandingPage>
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
               child: _fade(0, 0.28, child: _nav()),
             ),
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
                 child: Column(
                   children: [
-                    SizedBox(height: isWide ? 56 : 36),
+                    SizedBox(height: isWide ? 56 : 12),
                     isWide ? _wideHero() : _narrowHero(),
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 16),
                     _fade(0.70, 1.0, child: _footer()),
                   ],
                 ),
@@ -166,7 +170,7 @@ class _LandingPageState extends State<LandingPage>
     return Column(
       children: [
         _fade(0.14, 0.58, child: _cardStack()),
-        const SizedBox(height: 36),
+        const SizedBox(height: 14),
         _textBlock(TextAlign.center, CrossAxisAlignment.center),
       ],
     );
@@ -178,28 +182,7 @@ class _LandingPageState extends State<LandingPage>
     return Column(
       crossAxisAlignment: cross,
       children: [
-        _fade(
-          0.06,
-          0.36,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              border: Border.all(color: _outlineVar),
-              borderRadius: BorderRadius.circular(999),
-              color: _surfLow,
-            ),
-            child: Text(
-              'SUBSCRIPTION MANAGER',
-              style: TextStyle(
-                color: _outline,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
+
         _fade(
           0.12,
           0.48,
@@ -227,7 +210,7 @@ class _LandingPageState extends State<LandingPage>
             ),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 8),
         _fade(
           0.22,
           0.56,
@@ -241,7 +224,7 @@ class _LandingPageState extends State<LandingPage>
             ),
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 16),
         _fade(0.34, 0.68, child: _buttons(cross)),
       ],
     );
@@ -282,18 +265,53 @@ class _LandingPageState extends State<LandingPage>
       ),
     );
 
+    final guestBtn = TextButton(
+      onPressed: () async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_email', 'guest');
+          await prefs.setString('user_name', 'Guest');
+        } catch (e) {
+          debugPrint('Error starting guest session: $e');
+        }
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const DashboardPage(userName: 'Guest', userEmail: 'guest'),
+          ),
+          (_) => false,
+        );
+      },
+      style: TextButton.styleFrom(
+        foregroundColor: _onSurfVar,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
+      ),
+      child: const Text('Continue as Guest'),
+    );
+
     if (compact) {
       return Column(mainAxisSize: MainAxisSize.min, children: [
         primary,
         const SizedBox(height: 10),
         secondary,
+        const SizedBox(height: 12),
+        guestBtn,
       ]);
     }
-    return Row(
-      mainAxisSize: cross == CrossAxisAlignment.center
-          ? MainAxisSize.min
-          : MainAxisSize.max,
-      children: [primary, const SizedBox(width: 12), secondary],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: cross,
+      children: [
+        Row(
+          mainAxisSize: cross == CrossAxisAlignment.center
+              ? MainAxisSize.min
+              : MainAxisSize.max,
+          children: [primary, const SizedBox(width: 12), secondary],
+        ),
+        const SizedBox(height: 12),
+        guestBtn,
+      ],
     );
   }
 
@@ -302,7 +320,7 @@ class _LandingPageState extends State<LandingPage>
   // ════════════════════════════════════════════════════════════
   Widget _cardStack() {
     return SizedBox(
-      height: 310,
+      height: 240,
       child: AnimatedBuilder(
         animation: Listenable.merge([_entrance, _float]),
         builder: (context, _) {
@@ -337,7 +355,7 @@ class _LandingPageState extends State<LandingPage>
                     alignment: Alignment.center,
                     transform: Matrix4.translationValues(dx, dy, 0)
                       ..rotateZ(rot),
-                    child: _subCard(i),
+                    child: _cards[i],
                   ),
                 ),
               );

@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mongodb_service.dart';
+import '../services/api_service.dart';
 import 'dashboard/dashboard_page.dart';
 
 class AuthPage extends StatefulWidget {
@@ -130,11 +132,138 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_email', email);
         await prefs.setString('user_name', name);
+
+        // ── SYNC LOGIC ───────────────────────────────────────────
+        final guestJson = prefs.getString('local_subs_guest');
+        if (guestJson != null && guestJson.trim().isNotEmpty) {
+          setState(() => _loading = true); // Set loading while resolving and syncing
+          
+          List<Map<String, dynamic>> guestSubs = [];
+          try {
+            final decoded = List<dynamic>.from(jsonDecode(guestJson));
+            guestSubs = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+          } catch (e) {
+            debugPrint('Failed to parse guest data during sync: $e');
+          }
+
+          if (guestSubs.isNotEmpty) {
+            // Fetch cloud data using raw ApiService to bypass cache
+            final cloudSubs = await ApiService().getSubscriptions(email);
+            final normalizedCloud = <String, Map<String, dynamic>>{};
+            for (final sub in cloudSubs) {
+              final normName = sub['name'].toString().trim().toLowerCase();
+              normalizedCloud[normName] = sub;
+            }
+
+            final conflicts = <Map<String, dynamic>>[];
+            final nonConflicts = <Map<String, dynamic>>[];
+
+            for (final guestSub in guestSubs) {
+              final normName = guestSub['name'].toString().trim().toLowerCase();
+              if (normalizedCloud.containsKey(normName)) {
+                final cloudSub = normalizedCloud[normName]!;
+                // Check if key properties differ (Price, Currency, RenewalDate, Category)
+                final localPrice = (guestSub['price'] ?? 0).toString();
+                final cloudPrice = (cloudSub['price'] ?? 0).toString();
+                final localCurr = (guestSub['currency'] ?? 'USD').toString().toUpperCase();
+                final cloudCurr = (cloudSub['currency'] ?? 'USD').toString().toUpperCase();
+                final localRen = (guestSub['renewalDate'] ?? '').toString();
+                final cloudRen = (cloudSub['renewalDate'] ?? '').toString();
+                final localCat = (guestSub['category'] ?? 'Other').toString();
+                final cloudCat = (cloudSub['category'] ?? 'Other').toString();
+
+                if (localPrice != cloudPrice ||
+                    localCurr != cloudCurr ||
+                    localRen != cloudRen ||
+                    localCat != cloudCat) {
+                  conflicts.add({
+                    'local': guestSub,
+                    'cloud': cloudSub,
+                  });
+                }
+                // If they are exactly identical, we ignore the local duplicate
+              } else {
+                nonConflicts.add(guestSub);
+              }
+            }
+
+            List<int>? decisions;
+            if (conflicts.isNotEmpty && mounted) {
+              // Hide loading indicator to show bottom sheet
+              setState(() => _loading = false);
+              
+              decisions = await showModalBottomSheet<List<int>>(
+                context: context,
+                isScrollControlled: true,
+                isDismissible: false,
+                enableDrag: false,
+                backgroundColor: const Color(0xFFF8F6F1),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                builder: (_) => PopScope(
+                  canPop: false, // Prevent physical back button pop
+                  child: ConflictResolverSheet(
+                    conflicts: conflicts,
+                    onCancel: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              );
+
+              // Set loading back
+              if (mounted) setState(() => _loading = true);
+            }
+
+            // Sync: nonConflicts & resolved ones
+            try {
+              // 1. Upload non-conflicting guest subscriptions
+              for (final sub in nonConflicts) {
+                await ApiService().addSubscription(email, {
+                  ...sub,
+                  'email': email, // Ensure it is linked to the user's email
+                });
+              }
+
+              // 2. Upload/update resolved ones
+              if (decisions != null) {
+                for (int i = 0; i < conflicts.length; i++) {
+                  final local = conflicts[i]['local'] as Map<String, dynamic>;
+                  final cloud = conflicts[i]['cloud'] as Map<String, dynamic>;
+                  final choice = decisions[i]; // 0 = Keep Cloud, 1 = Keep Local
+
+                  if (choice == 1) {
+                    // Update cloud copy in MongoDB with guest details
+                    await ApiService().updateSubscription(email, cloud['id'].toString(), {
+                      'name': local['name'],
+                      'plan': local['plan'],
+                      'price': local['price'],
+                      'currency': local['currency'],
+                      'renewalDate': local['renewalDate'],
+                      'category': local['category'],
+                      'color': local['color'],
+                      'notes': local['notes'],
+                    });
+                  }
+                }
+              }
+
+              // Success! Clear guest database from SharedPreferences
+              await prefs.remove('local_subs_guest');
+            } catch (e) {
+              debugPrint('Error during subscription sync: $e');
+              _showSnackBar('Network error: Some guest subscriptions failed to sync. Keeping guest copy local.', isError: true);
+            }
+          }
+        }
+
+        // Ensure fetch timestamp cache is cleared so Dashboard pulls updated remote list
+        await prefs.remove('last_fetch_$email');
       } catch (e) {
         debugPrint('Failed to save session token locally: $e');
       }
 
       if (mounted) {
+        setState(() => _loading = false);
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => DashboardPage(userName: name, userEmail: email),
@@ -1018,6 +1147,339 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _error, width: 1.5),
         ),
+      ),
+    );
+  }
+}
+
+class ConflictResolverSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> conflicts;
+  final VoidCallback onCancel;
+
+  const ConflictResolverSheet({
+    super.key,
+    required this.conflicts,
+    required this.onCancel,
+  });
+
+  @override
+  State<ConflictResolverSheet> createState() => _ConflictResolverSheetState();
+}
+
+class _ConflictResolverSheetState extends State<ConflictResolverSheet> {
+  // Store decision index for each conflict: 0 = Cloud (first), 1 = Local (second)
+  late List<int> _decisions;
+
+  @override
+  void initState() {
+    super.initState();
+    // Default to keep local guest version (1)
+    _decisions = List.filled(widget.conflicts.length, 1);
+  }
+
+  void _bulkSet(int choice) {
+    setState(() {
+      _decisions = List.filled(widget.conflicts.length, choice);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: media.size.height * 0.85,
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle/indicator
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFACA8A1).withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          
+          // Header
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Resolve Sync Conflicts',
+                      style: TextStyle(
+                        color: Color(0xFF1A1A2E),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'We found duplicate subscriptions with mismatching values. Choose which one to keep.',
+                      style: TextStyle(
+                        color: Color(0xFF6B6B80),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Bulk actions
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () => _bulkSet(1),
+                icon: const Icon(Icons.download_done_rounded, size: 16),
+                label: const Text('Keep All Local Guest'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD4593A),
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _bulkSet(0),
+                icon: const Icon(Icons.cloud_download_rounded, size: 16),
+                label: const Text('Keep All Cloud'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF6B6B80),
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Conflicting items list
+          Expanded(
+            child: ListView.builder(
+              physics: const BouncingScrollPhysics(),
+              itemCount: widget.conflicts.length,
+              itemBuilder: (context, i) {
+                final local = widget.conflicts[i]['local'] as Map<String, dynamic>;
+                final cloud = widget.conflicts[i]['cloud'] as Map<String, dynamic>;
+                return _buildConflictCard(i, local, cloud);
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Confirm Button
+          SizedBox(
+            height: 52,
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                // Return selected decisions: list of choices
+                Navigator.of(context).pop(_decisions);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4593A),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text(
+                'Sync & Continue',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConflictCard(int index, Map<String, dynamic> local, Map<String, dynamic> cloud) {
+    final name = local['name'] ?? cloud['name'] ?? 'Subscription';
+    final localPrice = '${local['price'] ?? 0} ${(local['currency'] ?? 'USD').toString().toUpperCase()}';
+    final cloudPrice = '${cloud['price'] ?? 0} ${(cloud['currency'] ?? 'USD').toString().toUpperCase()}';
+    final localRenews = local['renewalDate'] ?? '';
+    final cloudRenews = cloud['renewalDate'] ?? '';
+    final localCategory = local['category'] ?? 'Other';
+    final cloudCategory = cloud['category'] ?? 'Other';
+
+    final choice = _decisions[index];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E4DE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4593A).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.sync_problem_rounded, color: Color(0xFFD4593A), size: 16),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Color(0xFF1A1A2E),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFE8E4DE)),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // Cloud option
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _decisions[index] = 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: choice == 0 ? const Color(0xFFD4593A).withValues(alpha: 0.05) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: choice == 0 ? const Color(0xFFD4593A) : const Color(0xFFE8E4DE),
+                          width: choice == 0 ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                choice == 0 ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                                color: choice == 0 ? const Color(0xFFD4593A) : const Color(0xFFACA8A1),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Keep Cloud',
+                                style: TextStyle(
+                                  color: Color(0xFF1A1A2E),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            cloudPrice,
+                            style: const TextStyle(
+                              color: Color(0xFF1A1A2E),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Renews $cloudRenews',
+                            style: const TextStyle(color: Color(0xFF6B6B80), fontSize: 10),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Cat: $cloudCategory',
+                            style: const TextStyle(color: Color(0xFFACA8A1), fontSize: 9),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Local Guest option
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _decisions[index] = 1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: choice == 1 ? const Color(0xFFD4593A).withValues(alpha: 0.05) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: choice == 1 ? const Color(0xFFD4593A) : const Color(0xFFE8E4DE),
+                          width: choice == 1 ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                choice == 1 ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                                color: choice == 1 ? const Color(0xFFD4593A) : const Color(0xFFACA8A1),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Keep Local',
+                                style: TextStyle(
+                                  color: Color(0xFF1A1A2E),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            localPrice,
+                            style: const TextStyle(
+                              color: Color(0xFF1A1A2E),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Renews $localRenews',
+                            style: const TextStyle(color: Color(0xFF6B6B80), fontSize: 10),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Cat: $localCategory',
+                            style: const TextStyle(color: Color(0xFFACA8A1), fontSize: 9),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

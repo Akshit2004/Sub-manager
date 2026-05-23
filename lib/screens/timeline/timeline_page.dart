@@ -81,117 +81,161 @@ class _TimelinePageState extends State<TimelinePage> with TickerProviderStateMix
           onRefresh: _controller.loadSubscriptions,
           color: const Color(0xFFD4593A),
           backgroundColor: const Color(0xFFFFFFFF),
-          child: SingleChildScrollView(
+          child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 100),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Header ──────────────────────────────────────────
-                _fade(0.0, 0.3, child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Timeline',
-                      style: TextStyle(
-                        color: Color(0xFF1A1A2E),
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -1.5,
+            slivers: [
+              // ── Header ──────────────────────────────────────────
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                sliver: SliverToBoxAdapter(
+                  child: _fade(0.0, 0.3, child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Timeline',
+                        style: TextStyle(
+                          color: Color(0xFF1A1A2E),
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -1.5,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Upcoming renewals and scheduled payments.',
+                        style: TextStyle(
+                          color: Color(0xFF6B6B80),
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  )),
+                ),
+              ),
+
+              if (noItems)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  sliver: SliverToBoxAdapter(
+                    child: _fade(0.1, 0.4, child: Center(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFFFF),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE8E4DE)),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(Icons.calendar_today_outlined, size: 40, color: Color(0xFFD4593A)),
+                            SizedBox(height: 16),
+                            Text(
+                              'No upcoming renewals',
+                              style: TextStyle(color: Color(0xFF1A1A2E), fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'All subscription timelines will render here.',
+                              style: TextStyle(color: Color(0xFF6B6B80), fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+                  ),
+                )
+              else ...[
+                // ── This Week Section ─────────────────────────────
+                if (_controller.thisWeek.isNotEmpty) ...[
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    sliver: SliverToBoxAdapter(
+                      child: _fade(0.1, 0.4, child: _buildSectionHeader('This Week')),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                          return _fade(
+                            0.15 + (i % 10) * 0.05,
+                            0.45 + (i % 10) * 0.05,
+                            child: TimelineItem(
+                              subscription: _controller.thisWeek[i],
+                              baseCurrency: _controller.baseCurrency,
+                            ),
+                          );
+                        },
+                        childCount: _controller.thisWeek.length,
                       ),
                     ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Upcoming renewals and scheduled payments.',
-                      style: TextStyle(
-                        color: Color(0xFF6B6B80),
-                        fontSize: 15,
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                ],
+
+                // ── This Month Section ────────────────────────────
+                if (_controller.thisMonth.isNotEmpty) ...[
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    sliver: SliverToBoxAdapter(
+                      child: _fade(0.2, 0.5, child: _buildSectionHeader('This Month')),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                          return _fade(
+                            0.25 + (i % 10) * 0.05,
+                            0.55 + (i % 10) * 0.05,
+                            child: TimelineItem(
+                              subscription: _controller.thisMonth[i],
+                              baseCurrency: _controller.baseCurrency,
+                            ),
+                          );
+                        },
+                        childCount: _controller.thisMonth.length,
                       ),
                     ),
-                  ],
-                )),
-                const SizedBox(height: 32),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                ],
 
-                if (noItems)
-                  _fade(0.1, 0.4, child: Center(
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFFFF),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE8E4DE)),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(Icons.calendar_today_outlined, size: 40, color: Color(0xFFD4593A)),
-                          SizedBox(height: 16),
-                          Text(
-                            'No upcoming renewals',
-                            style: TextStyle(color: Color(0xFF1A1A2E), fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'All subscription timelines will render here.',
-                            style: TextStyle(color: Color(0xFF6B6B80), fontSize: 13),
-                          ),
-                        ],
+                // ── Later Section ──────────────────────────────────
+                if (_controller.later.isNotEmpty) ...[
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    sliver: SliverToBoxAdapter(
+                      child: _fade(0.3, 0.6, child: _buildSectionHeader('Later')),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                          return _fade(
+                            0.35 + (i % 10) * 0.05,
+                            0.65 + (i % 10) * 0.05,
+                            child: TimelineItem(
+                              subscription: _controller.later[i],
+                              baseCurrency: _controller.baseCurrency,
+                            ),
+                          );
+                        },
+                        childCount: _controller.later.length,
                       ),
                     ),
-                  ))
-                else ...[
-                  // ── This Week Section ─────────────────────────────
-                  if (_controller.thisWeek.isNotEmpty) ...[
-                    _fade(0.1, 0.4, child: _buildSectionHeader('This Week')),
-                    const SizedBox(height: 8),
-                    ...List.generate(_controller.thisWeek.length, (i) {
-                      return _fade(
-                        0.15 + i * 0.05,
-                        0.45 + i * 0.05,
-                        child: TimelineItem(
-                          subscription: _controller.thisWeek[i],
-                          baseCurrency: _controller.baseCurrency,
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 28),
-                  ],
-
-                  // ── This Month Section ────────────────────────────
-                  if (_controller.thisMonth.isNotEmpty) ...[
-                    _fade(0.2, 0.5, child: _buildSectionHeader('This Month')),
-                    const SizedBox(height: 8),
-                    ...List.generate(_controller.thisMonth.length, (i) {
-                      return _fade(
-                        0.25 + i * 0.05,
-                        0.55 + i * 0.05,
-                        child: TimelineItem(
-                          subscription: _controller.thisMonth[i],
-                          baseCurrency: _controller.baseCurrency,
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 28),
-                  ],
-
-                  // ── Later Section ──────────────────────────────────
-                  if (_controller.later.isNotEmpty) ...[
-                    _fade(0.3, 0.6, child: _buildSectionHeader('Later')),
-                    const SizedBox(height: 8),
-                    ...List.generate(_controller.later.length, (i) {
-                      return _fade(
-                        0.35 + i * 0.05,
-                        0.65 + i * 0.05,
-                        child: TimelineItem(
-                          subscription: _controller.later[i],
-                          baseCurrency: _controller.baseCurrency,
-                        ),
-                      );
-                    }),
-                  ],
+                  ),
                 ],
               ],
-            ),
+            ],
           ),
         );
       },

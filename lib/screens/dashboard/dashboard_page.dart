@@ -143,32 +143,43 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                       onRefresh: _controller.loadSubscriptions,
                       color: const Color(0xFFD4593A),
                       backgroundColor: const Color(0xFFFFFFFF),
-                      child: SingleChildScrollView(
+                      child: CustomScrollView(
                         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 12),
-                            _fade(0.08, 0.38, child: SpendSummaryCard(controller: _controller, entrance: _entrance)),
-                            const SizedBox(height: 32),
-                            _fade(0.20, 0.50, child: SubscriptionListHeader(controller: _controller)),
-                            if (_controller.subscriptions.isEmpty)
-                              _fade(0.25, 0.60, child: EmptyState(onAddPressed: _showAddSubscriptionSheet))
-                            else
-                              ...List.generate(_controller.subscriptions.length, (i) {
-                                return _fade(
-                                  0.24 + i * 0.06,
-                                  0.54 + i * 0.06,
-                                  child: SubscriptionListItem(
-                                    subscription: _controller.subscriptions[i],
-                                    isNext: i == 0,
-                                    controller: _controller,
-                                  ),
-                                );
-                              }),
-                          ],
-                        ),
+                        slivers: [
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                            sliver: SliverList(
+                              delegate: SliverChildListDelegate([
+                                const SizedBox(height: 12),
+                                _fade(0.08, 0.38, child: SpendSummaryCard(controller: _controller, entrance: _entrance)),
+                                const SizedBox(height: 32),
+                                _fade(0.20, 0.50, child: SubscriptionListHeader(controller: _controller)),
+                                if (_controller.subscriptions.isEmpty)
+                                  _fade(0.25, 0.60, child: EmptyState(onAddPressed: _showAddSubscriptionSheet)),
+                              ]),
+                            ),
+                          ),
+                          if (_controller.subscriptions.isNotEmpty)
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, i) {
+                                    return _fade(
+                                      0.24 + (i % 10) * 0.06,
+                                      0.54 + (i % 10) * 0.06,
+                                      child: SubscriptionListItem(
+                                        subscription: _controller.subscriptions[i],
+                                        isNext: i == 0,
+                                        controller: _controller,
+                                      ),
+                                    );
+                                  },
+                                  childCount: _controller.subscriptions.length,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
             ),
@@ -228,26 +239,24 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) {
-        return Scaffold(
-          backgroundColor: const Color(0xFFF8F6F1),
-          body: Stack(
-            children: [
-              _buildBody(context),
-              if (_showUpdateBanner)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 12,
-                  left: 16,
-                  right: 16,
-                  child: _buildUpdateBanner(),
-                ),
-            ],
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F6F1),
+      body: Stack(
+        children: [
+          ListenableBuilder(
+            listenable: _controller,
+            builder: (context, _) => _buildBody(context),
           ),
-          bottomNavigationBar: _fade(0.40, 0.80, child: _buildBottomNav()),
-        );
-      },
+          if (_showUpdateBanner)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 12,
+              left: 16,
+              right: 16,
+              child: _buildUpdateBanner(),
+            ),
+        ],
+      ),
+      bottomNavigationBar: _fade(0.40, 0.80, child: _buildBottomNav()),
     );
   }
 

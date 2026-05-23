@@ -52,16 +52,9 @@ class ApiService {
       return url;
     }
 
-    // Local development URL
-    final envUrl = dotenv.env['API_BASE_URL']?.trim() ?? 'http://10.0.2.2:3000';
+    // Local development URL (using live hosted backend)
+    final envUrl = dotenv.env['API_BASE_URL']?.trim() ?? 'https://submanageradmin.vercel.app';
     
-    // Auto-detect Android emulator and rewrite localhost/127.0.0.1
-    if (defaultTargetPlatform == TargetPlatform.android &&
-        (envUrl.contains('localhost') || envUrl.contains('127.0.0.1'))) {
-      return envUrl
-          .replaceAll('localhost', '10.0.2.2')
-          .replaceAll('127.0.0.1', '10.0.2.2');
-    }
     return envUrl;
   }
 

@@ -14,6 +14,20 @@ class DbSubscriptionsService {
     final cleanEmail = email.toLowerCase().trim();
     final prefs = await SharedPreferences.getInstance();
     
+    // Boundary check for Guest Mode
+    if (cleanEmail == 'guest') {
+      final cachedJson = prefs.getString('local_subs_guest');
+      if (cachedJson != null) {
+        try {
+          final decoded = List<dynamic>.from(jsonDecode(cachedJson));
+          return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        } catch (e) {
+          debugPrint('Error parsing guest subscriptions: $e');
+        }
+      }
+      return [];
+    }
+    
     // 1. Read from local cache first
     final cacheKey = 'local_subs_$cleanEmail';
     final cachedJson = prefs.getString(cacheKey);
@@ -94,6 +108,22 @@ class DbSubscriptionsService {
       'createdAt': DateTime.now().toIso8601String(),
     };
 
+    if (cleanEmail == 'guest') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions('guest');
+        list.add(item);
+        await prefs.setString('local_subs_guest', jsonEncode(list));
+        
+        // Schedule reminders immediately
+        NotificationService().scheduleSubscriptionReminders(item);
+        return true;
+      } catch (e) {
+        debugPrint('Guest addSubscription failed: $e');
+        return false;
+      }
+    }
+
     if (kIsWeb) {
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -127,9 +157,27 @@ class DbSubscriptionsService {
     }
   }
 
-  /// Update notes on subscription (forces refresh)
   Future<bool> updateSubscriptionNotes(String email, String id, String notes) async {
     final cleanEmail = email.toLowerCase().trim();
+
+    if (cleanEmail == 'guest') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions('guest');
+        for (var item in list) {
+          final itemId = (item['id'] ?? item['createdAt'] ?? '').toString();
+          if (itemId == id) {
+            item['notes'] = notes;
+            break;
+          }
+        }
+        await prefs.setString('local_subs_guest', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Guest updateSubscriptionNotes failed: $e');
+        return false;
+      }
+    }
 
     if (kIsWeb) {
       try {
@@ -170,6 +218,25 @@ class DbSubscriptionsService {
   Future<bool> updateSubscriptionGroup(String email, String id, String? groupId) async {
     final cleanEmail = email.toLowerCase().trim();
 
+    if (cleanEmail == 'guest') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions('guest');
+        for (var item in list) {
+          final itemId = (item['id'] ?? item['createdAt'] ?? '').toString();
+          if (itemId == id) {
+            item['groupId'] = groupId;
+            break;
+          }
+        }
+        await prefs.setString('local_subs_guest', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Guest updateSubscriptionGroup failed: $e');
+        return false;
+      }
+    }
+
     if (kIsWeb) {
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -209,6 +276,27 @@ class DbSubscriptionsService {
   Future<bool> updateSubscription(String email, String id, Map<String, dynamic> data) async {
     final cleanEmail = email.toLowerCase().trim();
 
+    if (cleanEmail == 'guest') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions('guest');
+        for (var item in list) {
+          final itemId = (item['id'] ?? item['createdAt'] ?? '').toString();
+          if (itemId == id) {
+            data.forEach((key, value) { item[key] = value; });
+            // Re-schedule reminders in case dates/plans changed
+            NotificationService().scheduleSubscriptionReminders(item);
+            break;
+          }
+        }
+        await prefs.setString('local_subs_guest', jsonEncode(list));
+        return true;
+      } catch (e) {
+        debugPrint('Guest updateSubscription failed: $e');
+        return false;
+      }
+    }
+
     if (kIsWeb) {
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -247,6 +335,22 @@ class DbSubscriptionsService {
   /// Delete subscription (forces refresh)
   Future<bool> deleteSubscriptions(String email, List<String> ids) async {
     final cleanEmail = email.toLowerCase().trim();
+
+    if (cleanEmail == 'guest') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final list = await getSubscriptions('guest');
+        list.removeWhere((item) => ids.contains((item['id'] ?? item['createdAt'] ?? '').toString()));
+        await prefs.setString('local_subs_guest', jsonEncode(list));
+        for (final id in ids) {
+          NotificationService().cancelSubscriptionReminders(id);
+        }
+        return true;
+      } catch (e) {
+        debugPrint('Guest deleteSubscriptions failed: $e');
+        return false;
+      }
+    }
 
     if (kIsWeb) {
       try {
