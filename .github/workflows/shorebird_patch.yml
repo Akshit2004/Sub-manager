@@ -40,6 +40,7 @@ jobs:
 
       - name: Deploy Over-The-Air Patch
         # --allow-asset-diffs bypasses the asset warning in non-interactive CI mode
-        run: shorebird patch android --allow-asset-diffs
+        # --release-version=latest targets the most recent existing release dynamically
+        run: shorebird patch android --allow-asset-diffs --release-version=latest
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
