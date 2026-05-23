@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../dashboard_controller.dart';
-import '../../landing_page.dart';
+import '../../settings/settings_page.dart';
+
 
 class DashboardAppBar extends StatelessWidget {
   final DashboardController controller;
@@ -114,22 +114,14 @@ class DashboardAppBar extends StatelessWidget {
           ),
           const Spacer(),
           IconButton(
-            onPressed: () async {
-              try {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.remove('user_email');
-                await prefs.remove('user_name');
-              } catch (e) {
-                debugPrint('Error clearing session storage: $e');
-              }
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LandingPage()),
-                  (_) => false,
-                );
-              }
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SettingsPage(controller: controller),
+                ),
+              );
             },
-            icon: const Icon(Icons.logout_rounded, color: Color(0xFF6B6B80), size: 20),
+            icon: const Icon(Icons.settings_rounded, color: Color(0xFF6B6B80), size: 20),
           ),
         ],
       ),

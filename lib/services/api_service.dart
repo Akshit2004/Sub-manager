@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'shorebird_updater.dart';
 
 class ApiService {
@@ -15,12 +16,16 @@ class ApiService {
     _initFuture = initVersions();
   }
 
-  final String _appVersion = '1.0.0';
+  String _appVersion = '1.0.0';
   int? _patchVersion;
 
   /// Fetch and cache active App version and Shorebird patch version
   Future<void> initVersions() async {
     try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      debugPrint('[ApiService] Loaded dynamic App version: $_appVersion');
+      
       final updater = SubManagerShorebirdService();
       if (updater.isShorebirdAvailable()) {
         _patchVersion = await updater.currentPatchNumber();

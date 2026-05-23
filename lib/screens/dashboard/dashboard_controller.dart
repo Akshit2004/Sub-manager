@@ -5,7 +5,7 @@ import '../../../services/mongodb_service.dart';
 import '../../../utils/currency_utils.dart';
 
 class DashboardController extends ChangeNotifier {
-  final String userName;
+  String userName;
   final String userEmail;
 
   bool loading = true;
@@ -68,6 +68,17 @@ class DashboardController extends ChangeNotifier {
       await loadSubscriptions();
     } catch (e) {
       debugPrint('Error saving base currency: $e');
+    }
+  }
+
+  Future<void> updateUserName(String newName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_name', newName.trim());
+      userName = newName.trim();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error updating user name: $e');
     }
   }
 
