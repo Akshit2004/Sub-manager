@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../services/shorebird_updater.dart';
 
 import 'dashboard_controller.dart';
@@ -13,6 +12,7 @@ import '../timeline/timeline_page.dart';
 import '../analytics/analytics_page.dart';
 import '../family/family_page.dart';
 import '../../services/notification_service.dart';
+import '../../services/app_exit_helper.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userName;
@@ -330,8 +330,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                 ),
               ),
               onPressed: () {
-                // Instantly exits the app so the downloaded hot patch gets applied
-                SystemNavigator.pop();
+                // Fully terminates the process so that the next user launch is a cold start,
+                // forcing Shorebird's code push engine to apply the downloaded hot patch.
+                terminateApp();
               },
               child: const Text(
                 'Restart',

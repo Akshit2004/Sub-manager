@@ -15,7 +15,7 @@ class ApiService {
     _initFuture = initVersions();
   }
 
-  String _appVersion = '1.0.0';
+  final String _appVersion = '1.0.0';
   int? _patchVersion;
 
   /// Fetch and cache active App version and Shorebird patch version
